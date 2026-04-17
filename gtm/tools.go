@@ -13,6 +13,7 @@ import (
 func RegisterTools(server *mcp.Server) {
 	// Read operations
 	registerListAccounts(server)
+	registerUpdateAccount(server)
 	registerListContainers(server)
 	registerListWorkspaces(server)
 	registerListTags(server)
@@ -38,6 +39,7 @@ func RegisterTools(server *mcp.Server) {
 	registerUpdateVariable(server)
 	registerDeleteVariable(server)
 	registerCreateContainer(server)
+	registerUpdateContainer(server)
 	registerDeleteContainer(server)
 	registerCreateWorkspace(server)
 

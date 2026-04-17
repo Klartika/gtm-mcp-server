@@ -314,7 +314,9 @@ This enables dynamic URL resolution for trusted internal hostnames while keeping
 ### Write Operations
 | Tool | Description |
 |------|-------------|
+| `update_account` | Rename a GTM account |
 | `create_container` | Create a new container in an account |
+| `update_container` | Rename a container (preserves usage context, domain, notes) |
 | `delete_container` | Remove a container (requires confirmation) |
 | `create_workspace` | Create a new workspace in a container |
 | `create_tag` | Create a new tag |
