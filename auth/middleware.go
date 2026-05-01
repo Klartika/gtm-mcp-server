@@ -93,6 +93,11 @@ func Middleware(store TokenStore, google *GoogleProvider, logger *slog.Logger, b
 			ctx = context.WithValue(ctx, TokenStoreKey, store)
 			ctx = context.WithValue(ctx, GoogleProviderKey, google)
 
+			// If SA is configured, OAuth-authenticated users also use SA for GTM calls
+			if saTokenSource != nil {
+				ctx = context.WithValue(ctx, SATokenSourceKey, saTokenSource)
+			}
+
 			logger.Debug("authenticated request",
 				"client_id", tokenInfo.ClientID,
 				"auth_mode", "oauth",
