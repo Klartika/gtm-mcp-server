@@ -163,16 +163,13 @@ func (s *Server) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	claudeState := parts[1]
 
-	// Retrieve stored auth state
-	authState, err := s.store.GetState(combinedState)
+	// Retrieve and atomically consume stored auth state (single-use)
+	authState, err := s.store.ConsumeState(combinedState)
 	if err != nil {
 		s.logger.Error("failed to get state", "error", err)
 		s.errorResponse(w, "invalid_request", "Invalid or expired state")
 		return
 	}
-
-	// Clean up the state
-	_ = s.store.DeleteState(combinedState)
 
 	// Exchange code with Google
 	googleToken, err := s.google.Exchange(r.Context(), code)

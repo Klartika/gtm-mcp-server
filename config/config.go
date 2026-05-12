@@ -81,9 +81,6 @@ func (c *Config) ValidateAuth() error {
 	if c.GoogleClientSecret == "" {
 		return fmt.Errorf("GOOGLE_CLIENT_SECRET is required for authentication")
 	}
-	if c.JWTSecret == "" {
-		return fmt.Errorf("JWT_SECRET is required for authentication")
-	}
 	return nil
 }
 

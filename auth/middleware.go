@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -58,7 +59,7 @@ func Middleware(store TokenStore, google *GoogleProvider, logger *slog.Logger, b
 
 			// S2S mode: if bearer token matches the configured API key, use the
 			// shared service account token source and skip the per-user token store.
-			if saTokenSource != nil && accessToken == apiKey {
+			if saTokenSource != nil && subtle.ConstantTimeCompare([]byte(accessToken), []byte(apiKey)) == 1 {
 				ctx := context.WithValue(r.Context(), SATokenSourceKey, saTokenSource)
 				ctx = context.WithValue(ctx, TokenInfoKey, &TokenInfo{
 					ClientID:  "service-account",
