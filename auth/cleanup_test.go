@@ -17,8 +17,8 @@ func TestMemoryTokenStore_Cleanup_KeepsTokenWithValidRefresh(t *testing.T) {
 	store.StoreToken(&TokenInfo{
 		AccessToken:      "access-1",
 		RefreshToken:     "refresh-1",
-		ExpiresAt:        now.Add(-2 * time.Hour),       // access expired well past the +1h grace
-		RefreshExpiresAt: now.Add(29 * 24 * time.Hour),  // refresh still valid for ~29 days
+		ExpiresAt:        now.Add(-2 * time.Hour),      // access expired well past the +1h grace
+		RefreshExpiresAt: now.Add(29 * 24 * time.Hour), // refresh still valid for ~29 days
 		CreatedAt:        now.Add(-10 * time.Hour),
 	})
 
