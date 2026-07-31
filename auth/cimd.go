@@ -69,6 +69,11 @@ type CIMDFetcher struct {
 func NewCIMDFetcher() *CIMDFetcher {
 	f := &CIMDFetcher{cache: make(map[string]cimdCacheEntry)}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// Clone inherits ProxyFromEnvironment. Through a proxy the Control hook
+	// below would only ever see the proxy's own address, never the target,
+	// so the guard would be silently blind. CIMD documents are public
+	// internet resources; fetch them directly.
+	transport.Proxy = nil
 	transport.DialContext = (&net.Dialer{
 		Timeout:   cimdFetchTimeout,
 		KeepAlive: 30 * time.Second,
@@ -226,11 +231,46 @@ func rejectPrivateAddr(network, address string, _ syscall.RawConn) error {
 	return nil
 }
 
+// nonPublicCIDRs covers ranges that are not publicly routable but that net.IP
+// does not classify: IsPrivate only knows RFC1918 and fc00::/7. Without these,
+// a CGNAT or NAT64 address reaches real infrastructure — 64:ff9b::a9fe:a9fe is
+// the cloud metadata service on any NAT64 network.
+var nonPublicCIDRs = parseCIDRs(
+	"100.64.0.0/10", // RFC 6598 carrier-grade NAT
+	"192.0.0.0/24",  // RFC 6890 IETF protocol assignments
+	"198.18.0.0/15", // RFC 2544 benchmarking
+	"240.0.0.0/4",   // class E, includes 255.255.255.255
+	"64:ff9b::/96",  // RFC 6052 NAT64
+	"64:ff9b:1::/48",
+	"2002::/16", // 6to4, reaches the embedded IPv4 address
+	"100::/64",  // RFC 6666 discard-only
+)
+
+func parseCIDRs(cidrs ...string) []*net.IPNet {
+	nets := make([]*net.IPNet, 0, len(cidrs))
+	for _, c := range cidrs {
+		_, n, err := net.ParseCIDR(c)
+		if err != nil {
+			panic("auth: bad CIDR in nonPublicCIDRs: " + c)
+		}
+		nets = append(nets, n)
+	}
+	return nets
+}
+
 // isPublicIP reports whether ip is publicly routable.
 func isPublicIP(ip net.IP) bool {
-	return !(ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() ||
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() ||
 		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-		ip.IsInterfaceLocalMulticast() || ip.IsMulticast())
+		ip.IsInterfaceLocalMulticast() || ip.IsMulticast() {
+		return false
+	}
+	for _, n := range nonPublicCIDRs {
+		if n.Contains(ip) {
+			return false
+		}
+	}
+	return true
 }
 
 // rejectPrivateHost resolves host and fails if any address is loopback,

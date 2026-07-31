@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -184,6 +186,18 @@ func TestRejectPrivateAddr(t *testing.T) {
 		{"[fd00::1]:443", true}, // IPv6 unique-local
 		{"0.0.0.0:80", true},
 		{"[::ffff:127.0.0.1]:80", true}, // IPv4-mapped loopback
+
+		// Ranges net.IP's own helpers do not classify. IsPrivate covers only
+		// RFC1918 and fc00::/7, so these reach real infrastructure otherwise.
+		{"100.64.0.1:80", true},           // RFC 6598 CGNAT (AWS/GCP/k8s NAT)
+		{"[64:ff9b::a9fe:a9fe]:80", true}, // NAT64 of 169.254.169.254
+		{"192.0.0.1:80", true},            // IETF protocol assignments
+		{"198.18.0.1:80", true},           // benchmarking
+		{"240.0.0.1:80", true},            // class E
+		{"255.255.255.255:80", true},      // broadcast
+		{"[2002:7f00:1::]:80", true},      // 6to4 of 127.0.0.1
+		{"224.0.0.1:80", true},            // multicast
+		{"[ff02::1]:80", true},            // link-local multicast
 	}
 
 	for _, tt := range tests {
@@ -195,15 +209,38 @@ func TestRejectPrivateAddr(t *testing.T) {
 }
 
 func TestCIMDFetcher_DefaultTransportGuardsDialAddress(t *testing.T) {
+	// Dial a listener that is genuinely accepting connections, so an
+	// unguarded transport would succeed here. Dialling a closed port would
+	// fail with "connection refused" either way and prove nothing.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to open listener: %v", err)
+	}
+	defer ln.Close()
+
 	f := NewCIMDFetcher()
 	tr, ok := f.HTTPClient.Transport.(*http.Transport)
 	if !ok {
 		t.Fatalf("default HTTPClient.Transport is %T, want *http.Transport", f.HTTPClient.Transport)
 	}
-	// A guarded dialer must refuse to connect to a non-public address even
-	// when the hostname check was passed or skipped.
-	if _, err := tr.DialContext(context.Background(), "tcp", "127.0.0.1:9"); err == nil {
-		t.Error("expected the default transport to refuse dialling a loopback address")
+
+	_, err = tr.DialContext(context.Background(), "tcp", ln.Addr().String())
+	if err == nil {
+		t.Fatal("default transport dialled a reachable loopback address; dial guard is not wired")
+	}
+	if !strings.Contains(err.Error(), "non-public address") {
+		t.Errorf("dial failed for the wrong reason: %v", err)
+	}
+}
+
+// An inherited proxy would make the dial guard blind: Control would only ever
+// see the proxy's address, never the real target, silently reinstating the
+// DNS-rebinding bypass.
+func TestCIMDFetcher_DefaultTransportDoesNotUseProxy(t *testing.T) {
+	f := NewCIMDFetcher()
+	tr := f.HTTPClient.Transport.(*http.Transport)
+	if tr.Proxy != nil {
+		t.Error("default transport inherits a proxy, which bypasses the dial guard")
 	}
 }
 
