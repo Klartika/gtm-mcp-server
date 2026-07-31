@@ -242,8 +242,16 @@ var nonPublicCIDRs = parseCIDRs(
 	"240.0.0.0/4",   // class E, includes 255.255.255.255
 	"64:ff9b::/96",  // RFC 6052 NAT64
 	"64:ff9b:1::/48",
-	"2002::/16", // 6to4, reaches the embedded IPv4 address
-	"100::/64",  // RFC 6666 discard-only
+	"2002::/16",      // 6to4, reaches the embedded IPv4 address
+	"100::/64",       // RFC 6666 discard-only
+	"192.88.99.0/24", // RFC 7526 6to4 relay anycast
+	"2001::/32",      // Teredo, embeds an IPv4 address
+	"2001:10::/28",   // ORCHID
+	"2001:20::/28",   // ORCHIDv2
+	// IPv4-compatible IPv6 (::a.b.c.d). Deprecated by RFC 4291 and normally
+	// unroutable, but To4() only normalizes the ::ffff: form, so ::7f00:1
+	// would otherwise pass every net.IP check as public.
+	"::/96",
 )
 
 func parseCIDRs(cidrs ...string) []*net.IPNet {
