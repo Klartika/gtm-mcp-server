@@ -198,6 +198,14 @@ func TestRejectPrivateAddr(t *testing.T) {
 		{"[2002:7f00:1::]:80", true},      // 6to4 of 127.0.0.1
 		{"224.0.0.1:80", true},            // multicast
 		{"[ff02::1]:80", true},            // link-local multicast
+
+		// IPv4-compatible IPv6 (::a.b.c.d). To4() normalizes only the
+		// ::ffff: form, so no net.IP helper fires on these.
+		{"[::7f00:1]:80", true},    // 127.0.0.1
+		{"[::a9fe:a9fe]:80", true}, // 169.254.169.254
+		{"192.88.99.1:80", true},   // 6to4 relay anycast
+		{"[2001::1]:80", true},     // Teredo
+		{"[2001:10::1]:80", true},  // ORCHID
 	}
 
 	for _, tt := range tests {
