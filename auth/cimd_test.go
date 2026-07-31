@@ -114,6 +114,99 @@ func TestCIMDFetcher_Fetch_RejectsPrivateHostsByDefault(t *testing.T) {
 	}
 }
 
+// A redirect must not be able to walk the fetch off https onto an internal
+// plain-http endpoint. Asserts the target was never contacted, not merely that
+// Fetch returned some error — an unreachable target would fail either way.
+func TestCIMDFetcher_Fetch_DoesNotFollowRedirectToNonHTTPS(t *testing.T) {
+	var targetHits int
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetHits++
+		w.Write([]byte("internal"))
+	}))
+	defer target.Close()
+
+	fetcher, u, cleanup := newCIMDTestServer(t, "/client.json", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/latest/meta-data/", http.StatusFound)
+	})
+	defer cleanup()
+
+	_, err := fetcher.Fetch(context.Background(), u)
+	if err == nil {
+		t.Error("expected an error when the metadata document redirects to http")
+	}
+	if targetHits != 0 {
+		t.Errorf("redirect target was contacted %d times, want 0", targetHits)
+	}
+}
+
+// The https case: the redirect stays on https but points at a private address.
+// Exercised directly because the AllowPrivateHosts escape hatch that lets the
+// httptest server (127.0.0.1) be reached at all would also skip this check.
+func TestCIMDFetcher_CheckRedirect_RejectsPrivateHost(t *testing.T) {
+	f := NewCIMDFetcher()
+	req := httptest.NewRequest(http.MethodGet, "https://127.0.0.1/latest/meta-data/", nil)
+
+	if err := f.checkRedirect(req, nil); err == nil {
+		t.Error("expected an https redirect to a loopback address to be rejected")
+	}
+}
+
+func TestCIMDFetcher_CheckRedirect_RejectsTooManyHops(t *testing.T) {
+	f := NewCIMDFetcher()
+	f.AllowPrivateHosts = true
+	req := httptest.NewRequest(http.MethodGet, "https://example.com/next", nil)
+
+	via := make([]*http.Request, cimdMaxRedirects)
+	if err := f.checkRedirect(req, via); err == nil {
+		t.Errorf("expected rejection after %d hops", cimdMaxRedirects)
+	}
+	if err := f.checkRedirect(req, via[:1]); err != nil {
+		t.Errorf("a single hop to a public https host should be allowed, got %v", err)
+	}
+}
+
+// The dial-time guard sees the address actually being connected to, so it
+// covers both redirect targets and DNS rebinding, which rejectPrivateHost
+// (name-based, pre-flight) cannot.
+func TestRejectPrivateAddr(t *testing.T) {
+	tests := []struct {
+		address string
+		wantErr bool
+	}{
+		{"93.184.216.34:443", false}, // public
+		{"[2606:2800:220:1:248:1893:25c8:1946]:443", false},
+		{"127.0.0.1:80", true},
+		{"169.254.169.254:80", true}, // cloud metadata service
+		{"10.0.0.5:443", true},
+		{"192.168.1.1:443", true},
+		{"172.16.0.1:443", true},
+		{"[::1]:443", true},
+		{"[fd00::1]:443", true}, // IPv6 unique-local
+		{"0.0.0.0:80", true},
+		{"[::ffff:127.0.0.1]:80", true}, // IPv4-mapped loopback
+	}
+
+	for _, tt := range tests {
+		err := rejectPrivateAddr("tcp", tt.address, nil)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("rejectPrivateAddr(%q) error = %v, wantErr %v", tt.address, err, tt.wantErr)
+		}
+	}
+}
+
+func TestCIMDFetcher_DefaultTransportGuardsDialAddress(t *testing.T) {
+	f := NewCIMDFetcher()
+	tr, ok := f.HTTPClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("default HTTPClient.Transport is %T, want *http.Transport", f.HTTPClient.Transport)
+	}
+	// A guarded dialer must refuse to connect to a non-public address even
+	// when the hostname check was passed or skipped.
+	if _, err := tr.DialContext(context.Background(), "tcp", "127.0.0.1:9"); err == nil {
+		t.Error("expected the default transport to refuse dialling a loopback address")
+	}
+}
+
 func TestCIMDFetcher_Fetch_Caches(t *testing.T) {
 	hits := 0
 	var metadataURL string
