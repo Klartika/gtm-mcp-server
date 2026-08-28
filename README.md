@@ -552,6 +552,9 @@ itself, the directory gets the same mode.
 the file, the server stops at start-up. The server does not discard the
 sessions without a message.
 
+The Portainer Compose file (`docker-compose.portainer.yml`) sets this variable
+and supplies the named volume `mcp_tokens` for the directory `/data`.
+
 #### Bearer Renewal Cap (AUTH_AUTO_REFRESH_MAX_AGE)
 
 A client can send a bearer token that is expired. The server then refreshes the
@@ -584,16 +587,6 @@ limit.
 
 The server writes the log event `auth_auto_refresh_capped` for each refusal.
 The event contains the client ID and the age of the refused sequence.
-
-#### Token Persistence (TOKEN_STORE_PATH)
-
-By default, issued tokens are kept in memory only, so **every container restart logs all users out** and forces them to re-authenticate. To keep sessions across restarts, point `TOKEN_STORE_PATH` at a file on a mounted volume:
-
-```bash
-TOKEN_STORE_PATH=/data/tokens.json
-```
-
-The Portainer Compose file (`docker-compose.portainer.yml`) already wires this up with a named `mcp_tokens` volume. Leave `TOKEN_STORE_PATH` unset to keep the in-memory behaviour.
 
 ### Google Cloud Setup
 
