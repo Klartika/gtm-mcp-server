@@ -1196,3 +1196,100 @@ func TestBindingMatches_AbsentValuesAreAMismatch(t *testing.T) {
 		})
 	}
 }
+
+// Over https the cookie must carry the __Host- prefix, which tells the browser
+// to accept it only for this exact host with no Domain attribute. That is what
+// stops a sibling subdomain, or a network attacker on plain http to any host
+// under the parent domain, from planting a binding we would accept.
+func TestServer_AuthorizeHandler_UsesHostPrefixedCookieOverHTTPS(t *testing.T) {
+	store := NewMemoryTokenStore()
+	defer store.Close()
+
+	google, cleanup := newFakeGoogleProvider(t)
+	defer cleanup()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	server := NewServer("https://mcp.example.com", google, store, logger, 1*time.Hour)
+
+	_, cookies := runAuthorizeForBinding(t, server)
+	if len(cookies) != 1 {
+		t.Fatalf("expected one cookie, got %d", len(cookies))
+	}
+	c := cookies[0]
+
+	if c.Name != "__Host-gtm_fed_binding" {
+		t.Errorf("expected the __Host- prefixed name over https, got %q", c.Name)
+	}
+	// The prefix is only honoured with Path=/ and Secure and no Domain.
+	if c.Path != "/" {
+		t.Errorf("__Host- requires Path=/, got %q", c.Path)
+	}
+	if !c.Secure {
+		t.Error("__Host- requires Secure")
+	}
+	if c.Domain != "" {
+		t.Errorf("__Host- forbids a Domain attribute, got %q", c.Domain)
+	}
+}
+
+// A plain-http run cannot set a Secure cookie on a non-localhost origin, so the
+// unprefixed name stays for that case.
+func TestServer_AuthorizeHandler_UsesPlainCookieOverHTTP(t *testing.T) {
+	store := NewMemoryTokenStore()
+	defer store.Close()
+
+	google, cleanup := newFakeGoogleProvider(t)
+	defer cleanup()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	server := NewServer("http://localhost:8080", google, store, logger, 1*time.Hour)
+
+	_, cookies := runAuthorizeForBinding(t, server)
+	if len(cookies) != 1 {
+		t.Fatalf("expected one cookie, got %d", len(cookies))
+	}
+	if got := cookies[0].Name; got != "gtm_fed_binding" {
+		t.Errorf("expected the unprefixed name over http, got %q", got)
+	}
+	if got := cookies[0].Path; got != "/oauth/callback" {
+		t.Errorf("expected the callback-scoped path over http, got %q", got)
+	}
+}
+
+// The whole point of the prefix is lost if the callback also accepts the
+// unprefixed name: that is precisely the cookie an attacker on a sibling
+// subdomain can set. An https flow must require the prefixed one.
+func TestServer_CallbackHandler_UnprefixedCookieDoesNotSatisfyAnHTTPSFlow(t *testing.T) {
+	store := NewMemoryTokenStore()
+	defer store.Close()
+
+	google, exchanges, cleanup := newCountingFakeGoogleProvider(t)
+	defer cleanup()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	server := NewServer("https://mcp.example.com", google, store, logger, 1*time.Hour)
+
+	googleState, cookies := runAuthorizeForBinding(t, server)
+	if len(cookies) != 1 {
+		t.Fatalf("expected one cookie, got %d", len(cookies))
+	}
+
+	// The injected cookie carries the right value under the unprefixed name,
+	// which is all a sibling-subdomain attacker could achieve.
+	cbParams := url.Values{}
+	cbParams.Set("code", "google-code")
+	cbParams.Set("state", googleState)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/callback?"+cbParams.Encode(), nil)
+	req.Host = "mcp.example.com"
+	req.AddCookie(&http.Cookie{Name: "gtm_fed_binding", Value: cookies[0].Value})
+	w := httptest.NewRecorder()
+	server.CallbackHandler(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d for an unprefixed cookie on an https flow, got %d: %s",
+			http.StatusBadRequest, w.Code, w.Body.String())
+	}
+	if n := exchanges.Load(); n != 0 {
+		t.Errorf("refused callback exchanged the code with Google %d time(s), want 0", n)
+	}
+}

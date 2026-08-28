@@ -25,19 +25,37 @@ import (
 // matches. The victim's browser never visited the attacker's /authorize, so it
 // carries no such cookie and the flow is refused.
 //
-// Residual risk, deliberately accepted: the defence assumes an attacker cannot
-// plant a binding cookie they know into the victim's browser for our host.
-// Cookies have no origin or scheme integrity, so an attacker holding a sibling
-// subdomain, or able to intercept plain http to any host under the parent
-// domain, could set a Domain-scoped cookie the victim's browser would send
-// here. A `__Host-` prefix would close that, but it mandates `Path=/` and
-// `Secure`, which conflicts with scoping the cookie to the callback and with
-// running locally over http. Tracked separately rather than decided here; the
-// bar is still far above the pre-fix state, which needed no cookie at all.
+// Cookies have no origin or scheme integrity, so the binding alone would still
+// be plantable: an attacker holding a sibling subdomain, or able to intercept
+// plain http to any host under the parent domain, could set a Domain-scoped
+// cookie the victim's browser would send here. The `__Host-` prefix closes
+// that — a browser accepts such a cookie only for the exact host that set it,
+// with no Domain attribute — at the cost of mandating Path=/ and Secure.
+//
+// A plain-http run on a non-localhost origin cannot set a Secure cookie at all,
+// so the name is chosen from the issuer scheme: prefixed over https, plain
+// otherwise. The callback accepts only the name that matches its own flow's
+// issuer. Accepting either would give the whole prefix away, since the
+// unprefixed name is exactly the one an attacker can plant.
 const (
-	bindingCookieName   = "gtm_fed_binding"
-	bindingCookieMaxAge = 600
+	bindingCookiePlainName = "gtm_fed_binding"
+	bindingCookieHostName  = "__Host-" + bindingCookiePlainName
+	bindingCookieMaxAge    = 600
 )
+
+func issuerIsHTTPS(issuer string) bool {
+	return strings.HasPrefix(issuer, "https://")
+}
+
+// bindingCookieNameFor picks the name this issuer's flows use. It must give the
+// same answer at /authorize and at the callback, so both sides pass the issuer
+// recorded on the state row.
+func bindingCookieNameFor(issuer string) string {
+	if issuerIsHTTPS(issuer) {
+		return bindingCookieHostName
+	}
+	return bindingCookiePlainName
+}
 
 func hashBinding(value string) string {
 	sum := sha256.Sum256([]byte(value))
@@ -61,19 +79,28 @@ func bindingMatches(cookieValue, expectedHash string) bool {
 // cookie is marked Secure whenever the issuer we resolved for this request is
 // https, so a plain-http local run still works.
 func setBindingCookie(w http.ResponseWriter, value, issuer string) {
+	// The prefix is only honoured with Path=/ and Secure and no Domain, so the
+	// https path cannot keep the tighter callback scoping. The cookie is opaque,
+	// HttpOnly and short-lived, and grants nothing without the matching state
+	// row, so sending it on every request to this host is a fair trade for
+	// closing the injection path.
+	path := "/oauth/callback"
+	if issuerIsHTTPS(issuer) {
+		path = "/"
+	}
 	http.SetCookie(w, &http.Cookie{
-		Name:     bindingCookieName,
+		Name:     bindingCookieNameFor(issuer),
 		Value:    value,
-		Path:     "/oauth/callback",
+		Path:     path,
 		MaxAge:   bindingCookieMaxAge,
 		HttpOnly: true,
-		Secure:   strings.HasPrefix(issuer, "https://"),
+		Secure:   issuerIsHTTPS(issuer),
 		SameSite: http.SameSiteLaxMode,
 	})
 }
 
-func bindingFromRequest(r *http.Request) string {
-	c, err := r.Cookie(bindingCookieName)
+func bindingFromRequest(r *http.Request, issuer string) string {
+	c, err := r.Cookie(bindingCookieNameFor(issuer))
 	if err != nil {
 		return ""
 	}
