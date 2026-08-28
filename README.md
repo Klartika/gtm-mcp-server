@@ -504,11 +504,13 @@ not set this variable, the rate limiter uses the address of the proxy.
 The rate limiter reads the **last** entry in the header. A proxy adds the
 address of its peer to the end of the header. Thus the last entry is the entry
 that your own proxy wrote. The entries before it come from the client, and a
-client can give false values for them.
+client can give false values for them. If the header occurs more than one time,
+the server reads the last entry of the last occurrence.
 
 This operation assumes one proxy between the client and the server. If you use
-two proxies, the last entry is the address of the nearest proxy. All clients
-behind that proxy then share one limit.
+two proxies, the last entry is the address of the proxy that is nearest to the
+client, not the address of the client. All clients behind that proxy then share
+one limit.
 
 ```bash
 TRUST_PROXY=true

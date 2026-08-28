@@ -100,7 +100,11 @@ func (rl *RateLimiter) cleanup() {
 // the deployment. A second proxy would mean skipping that many entries.
 func extractClientIP(r *http.Request, trustProxy bool) string {
 	if trustProxy {
-		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+		// Joining the header lines rather than reading the first one: a proxy
+		// that appends a line instead of rewriting one leaves the client's own
+		// line first, and RFC 7230 makes repeated field lines equivalent to
+		// one comma-joined line anyway.
+		if forwarded := strings.Join(r.Header.Values("X-Forwarded-For"), ","); forwarded != "" {
 			hops := strings.Split(forwarded, ",")
 			for i := len(hops) - 1; i >= 0; i-- {
 				if hop := strings.TrimSpace(hops[i]); hop != "" {
