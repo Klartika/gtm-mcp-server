@@ -24,6 +24,16 @@ import (
 // next to the state row. At the callback we require a cookie whose hash
 // matches. The victim's browser never visited the attacker's /authorize, so it
 // carries no such cookie and the flow is refused.
+//
+// Residual risk, deliberately accepted: the defence assumes an attacker cannot
+// plant a binding cookie they know into the victim's browser for our host.
+// Cookies have no origin or scheme integrity, so an attacker holding a sibling
+// subdomain, or able to intercept plain http to any host under the parent
+// domain, could set a Domain-scoped cookie the victim's browser would send
+// here. A `__Host-` prefix would close that, but it mandates `Path=/` and
+// `Secure`, which conflicts with scoping the cookie to the callback and with
+// running locally over http. Tracked separately rather than decided here; the
+// bar is still far above the pre-fix state, which needed no cookie at all.
 const (
 	bindingCookieName   = "gtm_fed_binding"
 	bindingCookieMaxAge = 600

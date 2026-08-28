@@ -216,10 +216,11 @@ func (s *Server) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 	// The browser that completed Google consent must be the one that started
 	// the flow, or an attacker can have a victim's code minted against their
 	// own registered redirect_uri. Checked before the code is spent.
-	if !bindingMatches(bindingFromRequest(r), authState.BindingHash) {
+	binding := bindingFromRequest(r)
+	if !bindingMatches(binding, authState.BindingHash) {
 		s.logger.Error("federation state binding mismatch",
 			"client_id", authState.ClientID,
-			"has_cookie", bindingFromRequest(r) != "",
+			"has_cookie", binding != "",
 		)
 		s.errorResponse(w, "invalid_request", "Invalid or expired state")
 		return
