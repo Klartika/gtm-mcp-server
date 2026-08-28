@@ -57,6 +57,7 @@ Key design decisions:
 - **In-memory token store.** No database. Redeployment requires re-auth. Acceptable because tokens are short-lived and the server is single-instance.
 - **Auto-refresh in middleware.** When an access token expires but the refresh token is valid, middleware refreshes the Google token in-place and extends the access token TTL — the client's bearer stays valid without re-auth.
 - **PKCE required.** No client_secret needed from MCP clients. Code binding via SHA256 challenge.
+- **Federation state bound to the browser.** `/authorize` sets an opaque `HttpOnly; SameSite=Lax` cookie scoped to `/oauth/callback` and records only its SHA-256 on the state row; the callback refuses any request whose cookie does not hash to it. Without this, `state` is a bare server-side lookup key, and since dynamic client registration is open, an attacker could have a victim's Google code minted against the attacker's own registered `redirect_uri`.
 - **RFC compliance.** RFC 8414 (server metadata), RFC 9728 (protected resource metadata), RFC 7591 (dynamic client registration).
 
 ### `gtm/`

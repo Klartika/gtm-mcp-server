@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -827,14 +828,25 @@ func TestServer_CallbackHandler_ExpiredState(t *testing.T) {
 // local httptest server, plus a cleanup function.
 func newFakeGoogleProvider(t *testing.T) (*GoogleProvider, func()) {
 	t.Helper()
+	p, _, cleanup := newCountingFakeGoogleProvider(t)
+	return p, cleanup
+}
+
+// newCountingFakeGoogleProvider is newFakeGoogleProvider plus a count of how
+// often the token endpoint was reached, so a test can prove an authorization
+// code was never exchanged.
+func newCountingFakeGoogleProvider(t *testing.T) (*GoogleProvider, *atomic.Int64, func()) {
+	t.Helper()
+	var exchanges atomic.Int64
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		exchanges.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"access_token":"google-access","refresh_token":"google-refresh","token_type":"Bearer","expires_in":3600}`))
 	}))
 	p := NewGoogleProvider("client-id", "client-secret", "http://localhost:8080/oauth/callback")
 	p.Config().Endpoint.TokenURL = ts.URL
 	p.Config().Endpoint.AuthURL = ts.URL + "/auth"
-	return p, ts.Close
+	return p, &exchanges, ts.Close
 }
 
 // runAuthorizeCallbackFlow drives /authorize then /oauth/callback and returns
@@ -873,6 +885,11 @@ func runAuthorizeCallbackFlow(t *testing.T, server *Server, authorizeHost string
 	cbParams.Set("code", "google-code")
 	cbParams.Set("state", googleState)
 	cbReq := httptest.NewRequest(http.MethodGet, "/oauth/callback?"+cbParams.Encode(), nil)
+	// The same browser completes the flow, so it returns the binding cookie
+	// that /authorize set.
+	for _, c := range w.Result().Cookies() {
+		cbReq.AddCookie(c)
+	}
 	cbW := httptest.NewRecorder()
 	server.CallbackHandler(cbW, cbReq)
 	if cbW.Code != http.StatusFound {
@@ -968,5 +985,214 @@ func TestRefreshTokenGrant_ResetsChainAge(t *testing.T) {
 	}
 	if !rotated.CreatedAt.After(oldCreatedAt.Add(24 * time.Hour)) {
 		t.Errorf("rotation carried the old chain age forward (CreatedAt=%v); a capped client could never recover", rotated.CreatedAt)
+	}
+}
+
+// runAuthorizeForBinding drives /authorize only and returns the Google state
+// plus the cookies the response set, so a test can decide whether to send them
+// back on the callback.
+func runAuthorizeForBinding(t *testing.T, server *Server) (string, []*http.Cookie) {
+	t.Helper()
+
+	params := url.Values{}
+	params.Set("response_type", "code")
+	params.Set("client_id", "test-client")
+	params.Set("redirect_uri", "https://claude.ai/api/mcp/auth_callback")
+	params.Set("state", "claude-state")
+	params.Set("code_challenge", base64.RawURLEncoding.EncodeToString(func() []byte { h := sha256.Sum256([]byte("verifier")); return h[:] }()))
+	params.Set("code_challenge_method", "S256")
+
+	req := httptest.NewRequest(http.MethodGet, "/authorize?"+params.Encode(), nil)
+	w := httptest.NewRecorder()
+	server.AuthorizeHandler(w, req)
+	if w.Code != http.StatusFound {
+		t.Fatalf("authorize: expected 302, got %d: %s", w.Code, w.Body.String())
+	}
+
+	googleURL, err := url.Parse(w.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("authorize: bad Location: %v", err)
+	}
+	googleState := googleURL.Query().Get("state")
+	if googleState == "" {
+		t.Fatal("authorize: no state in Google redirect")
+	}
+	return googleState, w.Result().Cookies()
+}
+
+// The attacker starts the flow, so they hold the state; the victim's browser
+// completes Google consent and carries no binding cookie. That callback must
+// be refused.
+func TestServer_CallbackHandler_WithoutBindingCookieIsRefused(t *testing.T) {
+	store := NewMemoryTokenStore()
+	defer store.Close()
+
+	google, exchanges, cleanup := newCountingFakeGoogleProvider(t)
+	defer cleanup()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	server := NewServer("http://localhost:8080", google, store, logger, 1*time.Hour)
+
+	googleState, _ := runAuthorizeForBinding(t, server)
+
+	cbParams := url.Values{}
+	cbParams.Set("code", "google-code")
+	cbParams.Set("state", googleState)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/callback?"+cbParams.Encode(), nil)
+	w := httptest.NewRecorder()
+	server.CallbackHandler(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d for a callback with no binding cookie, got %d: %s",
+			http.StatusBadRequest, w.Code, w.Body.String())
+	}
+	if loc := w.Header().Get("Location"); loc != "" {
+		t.Errorf("refused callback must not redirect to the client, got Location %q", loc)
+	}
+	// The binding is checked before the exchange, so the victim's Google code
+	// is never spent on a refused callback.
+	if n := exchanges.Load(); n != 0 {
+		t.Errorf("refused callback exchanged the code with Google %d time(s), want 0", n)
+	}
+}
+
+// A cookie from some other browser, or a guessed one, must not satisfy the
+// binding either.
+func TestServer_CallbackHandler_WithWrongBindingCookieIsRefused(t *testing.T) {
+	store := NewMemoryTokenStore()
+	defer store.Close()
+
+	google, exchanges, cleanup := newCountingFakeGoogleProvider(t)
+	defer cleanup()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	server := NewServer("http://localhost:8080", google, store, logger, 1*time.Hour)
+
+	googleState, cookies := runAuthorizeForBinding(t, server)
+	if len(cookies) == 0 {
+		t.Fatal("authorize set no cookie, so there is no binding to get wrong")
+	}
+
+	cbParams := url.Values{}
+	cbParams.Set("code", "google-code")
+	cbParams.Set("state", googleState)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/callback?"+cbParams.Encode(), nil)
+	req.AddCookie(&http.Cookie{Name: cookies[0].Name, Value: "not-the-issued-binding"})
+	w := httptest.NewRecorder()
+	server.CallbackHandler(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d for a callback with a wrong binding cookie, got %d: %s",
+			http.StatusBadRequest, w.Code, w.Body.String())
+	}
+	if n := exchanges.Load(); n != 0 {
+		t.Errorf("refused callback exchanged the code with Google %d time(s), want 0", n)
+	}
+}
+
+func TestServer_AuthorizeHandler_SetsBindingCookie(t *testing.T) {
+	store := NewMemoryTokenStore()
+	defer store.Close()
+
+	google, cleanup := newFakeGoogleProvider(t)
+	defer cleanup()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	server := NewServer("http://localhost:8080", google, store, logger, 1*time.Hour)
+
+	_, cookies := runAuthorizeForBinding(t, server)
+	if len(cookies) != 1 {
+		t.Fatalf("expected exactly one cookie on the authorize response, got %d", len(cookies))
+	}
+	c := cookies[0]
+
+	if c.Value == "" {
+		t.Error("binding cookie has an empty value")
+	}
+	if !c.HttpOnly {
+		t.Error("binding cookie must be HttpOnly so page script cannot read it")
+	}
+	// Google's redirect back is a cross-site top-level GET, which Lax permits
+	// and Strict would drop.
+	if c.SameSite != http.SameSiteLaxMode {
+		t.Errorf("binding cookie must be SameSite=Lax, got %v", c.SameSite)
+	}
+	if c.Path != "/oauth/callback" {
+		t.Errorf("binding cookie should be scoped to the callback, got path %q", c.Path)
+	}
+	if c.MaxAge <= 0 {
+		t.Errorf("binding cookie needs a bounded lifetime, got Max-Age %d", c.MaxAge)
+	}
+}
+
+func TestServer_AuthorizeHandler_BindingCookieSecureOverHTTPS(t *testing.T) {
+	store := NewMemoryTokenStore()
+	defer store.Close()
+
+	google, cleanup := newFakeGoogleProvider(t)
+	defer cleanup()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	server := NewServer("https://mcp.example.com", google, store, logger, 1*time.Hour)
+
+	_, cookies := runAuthorizeForBinding(t, server)
+	if len(cookies) != 1 {
+		t.Fatalf("expected exactly one cookie on the authorize response, got %d", len(cookies))
+	}
+	if !cookies[0].Secure {
+		t.Error("binding cookie must be Secure when the issuer is https")
+	}
+}
+
+// A binding reused across flows would let any victim holding a live cookie
+// from their own recent login satisfy an attacker's state row, which is the
+// original attack. Each flow must mint its own.
+func TestServer_AuthorizeHandler_BindingIsFreshPerFlow(t *testing.T) {
+	store := NewMemoryTokenStore()
+	defer store.Close()
+
+	google, cleanup := newFakeGoogleProvider(t)
+	defer cleanup()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	server := NewServer("http://localhost:8080", google, store, logger, 1*time.Hour)
+
+	_, first := runAuthorizeForBinding(t, server)
+	_, second := runAuthorizeForBinding(t, server)
+
+	if len(first) != 1 || len(second) != 1 {
+		t.Fatalf("expected one cookie per authorize, got %d and %d", len(first), len(second))
+	}
+	if first[0].Value == second[0].Value {
+		t.Error("two authorize calls issued the same binding; each flow must get a fresh one")
+	}
+}
+
+// The defence rests on an absent value never satisfying the check: a state row
+// that carries no binding must not be openable by a request that carries no
+// cookie.
+func TestBindingMatches_AbsentValuesAreAMismatch(t *testing.T) {
+	binding := "some-opaque-binding"
+
+	tests := []struct {
+		name         string
+		cookieValue  string
+		expectedHash string
+		want         bool
+	}{
+		{"both absent", "", "", false},
+		{"no cookie, hash recorded", "", hashBinding(binding), false},
+		{"cookie, no hash recorded", binding, "", false},
+		{"cookie does not match", "other", hashBinding(binding), false},
+		{"raw binding stored instead of its hash", binding, binding, false},
+		{"matching", binding, hashBinding(binding), true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := bindingMatches(tt.cookieValue, tt.expectedHash); got != tt.want {
+				t.Errorf("bindingMatches(%q, %q) = %v, want %v", tt.cookieValue, tt.expectedHash, got, tt.want)
+			}
+		})
 	}
 }
