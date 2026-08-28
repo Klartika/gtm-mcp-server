@@ -477,3 +477,90 @@ func TestRateLimiter_DifferentIPsIndependent(t *testing.T) {
 		}
 	}
 }
+
+// The proxy appends the peer address to whatever X-Forwarded-For the client
+// sent, so the leftmost entry is attacker-controlled. A client rotating that
+// value must not get a fresh bucket per request.
+func TestRateLimiter_SpoofedLeftmostXFFCannotEscapeTheBucket(t *testing.T) {
+	rl := NewRateLimiter(1, 1, true)
+	defer rl.Close()
+
+	handler := rl.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Each request carries a different spoofed leftmost entry; the rightmost
+	// entry is the one our own proxy wrote and is the same every time.
+	send := func(spoofed string) int {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.RemoteAddr = "10.0.0.1:1234"
+		req.Header.Set("X-Forwarded-For", spoofed+", 203.0.113.7")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	if code := send("198.51.100.1"); code != http.StatusOK {
+		t.Fatalf("first request: expected status 200, got %d", code)
+	}
+	if code := send("198.51.100.2"); code != http.StatusTooManyRequests {
+		t.Errorf("second request with a rotated leftmost entry: expected status 429, got %d", code)
+	}
+}
+
+// A header that ends in a separator must not collapse the bucket key to the
+// empty string, which would put unrelated clients in one shared bucket.
+func TestRateLimiter_TrailingSeparatorInXFFKeepsTheProxyEntry(t *testing.T) {
+	rl := NewRateLimiter(1, 1, true)
+	defer rl.Close()
+
+	handler := rl.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	send := func(xff, remoteAddr string) int {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.RemoteAddr = remoteAddr
+		req.Header.Set("X-Forwarded-For", xff)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	// Spends the single token held by 203.0.113.8.
+	if code := send("203.0.113.8, ", "10.0.0.1:1234"); code != http.StatusOK {
+		t.Fatalf("first request: expected status 200, got %d", code)
+	}
+	// A different client, whose header also ends in a separator, must have its
+	// own bucket rather than sharing an empty-string key with the first.
+	if code := send("203.0.113.9, ", "10.0.0.1:5678"); code != http.StatusOK {
+		t.Errorf("unrelated client with a trailing separator: expected status 200, got %d", code)
+	}
+}
+
+// Pinning test: without TRUST_PROXY the header is client-supplied noise and
+// must not affect the bucket. Passes before and after the rightmost fix.
+func TestRateLimiter_XForwardedForIgnoredWhenProxyNotTrusted(t *testing.T) {
+	rl := NewRateLimiter(1, 1, false)
+	defer rl.Close()
+
+	handler := rl.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	send := func(xff string) int {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.RemoteAddr = "203.0.113.5:1234"
+		req.Header.Set("X-Forwarded-For", xff)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	if code := send("198.51.100.1"); code != http.StatusOK {
+		t.Fatalf("first request: expected status 200, got %d", code)
+	}
+	if code := send("198.51.100.2"); code != http.StatusTooManyRequests {
+		t.Errorf("second request: expected status 429, got %d", code)
+	}
+}
