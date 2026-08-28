@@ -873,6 +873,11 @@ func runAuthorizeCallbackFlow(t *testing.T, server *Server, authorizeHost string
 	cbParams.Set("code", "google-code")
 	cbParams.Set("state", googleState)
 	cbReq := httptest.NewRequest(http.MethodGet, "/oauth/callback?"+cbParams.Encode(), nil)
+	// The same browser completes the flow, so it returns the binding cookie
+	// that /authorize set.
+	for _, c := range w.Result().Cookies() {
+		cbReq.AddCookie(c)
+	}
 	cbW := httptest.NewRecorder()
 	server.CallbackHandler(cbW, cbReq)
 	if cbW.Code != http.StatusFound {
@@ -968,5 +973,153 @@ func TestRefreshTokenGrant_ResetsChainAge(t *testing.T) {
 	}
 	if !rotated.CreatedAt.After(oldCreatedAt.Add(24 * time.Hour)) {
 		t.Errorf("rotation carried the old chain age forward (CreatedAt=%v); a capped client could never recover", rotated.CreatedAt)
+	}
+}
+
+// runAuthorizeForBinding drives /authorize only and returns the Google state
+// plus the cookies the response set, so a test can decide whether to send them
+// back on the callback.
+func runAuthorizeForBinding(t *testing.T, server *Server) (string, []*http.Cookie) {
+	t.Helper()
+
+	params := url.Values{}
+	params.Set("response_type", "code")
+	params.Set("client_id", "test-client")
+	params.Set("redirect_uri", "https://claude.ai/api/mcp/auth_callback")
+	params.Set("state", "claude-state")
+	params.Set("code_challenge", base64.RawURLEncoding.EncodeToString(func() []byte { h := sha256.Sum256([]byte("verifier")); return h[:] }()))
+	params.Set("code_challenge_method", "S256")
+
+	req := httptest.NewRequest(http.MethodGet, "/authorize?"+params.Encode(), nil)
+	w := httptest.NewRecorder()
+	server.AuthorizeHandler(w, req)
+	if w.Code != http.StatusFound {
+		t.Fatalf("authorize: expected 302, got %d: %s", w.Code, w.Body.String())
+	}
+
+	googleURL, err := url.Parse(w.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("authorize: bad Location: %v", err)
+	}
+	googleState := googleURL.Query().Get("state")
+	if googleState == "" {
+		t.Fatal("authorize: no state in Google redirect")
+	}
+	return googleState, w.Result().Cookies()
+}
+
+// The attacker starts the flow, so they hold the state; the victim's browser
+// completes Google consent and carries no binding cookie. That callback must
+// be refused.
+func TestServer_CallbackHandler_WithoutBindingCookieIsRefused(t *testing.T) {
+	store := NewMemoryTokenStore()
+	defer store.Close()
+
+	google, cleanup := newFakeGoogleProvider(t)
+	defer cleanup()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	server := NewServer("http://localhost:8080", google, store, logger, 1*time.Hour)
+
+	googleState, _ := runAuthorizeForBinding(t, server)
+
+	cbParams := url.Values{}
+	cbParams.Set("code", "google-code")
+	cbParams.Set("state", googleState)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/callback?"+cbParams.Encode(), nil)
+	w := httptest.NewRecorder()
+	server.CallbackHandler(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d for a callback with no binding cookie, got %d: %s",
+			http.StatusBadRequest, w.Code, w.Body.String())
+	}
+	if loc := w.Header().Get("Location"); loc != "" {
+		t.Errorf("refused callback must not redirect to the client, got Location %q", loc)
+	}
+}
+
+// A cookie from some other browser, or a guessed one, must not satisfy the
+// binding either.
+func TestServer_CallbackHandler_WithWrongBindingCookieIsRefused(t *testing.T) {
+	store := NewMemoryTokenStore()
+	defer store.Close()
+
+	google, cleanup := newFakeGoogleProvider(t)
+	defer cleanup()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	server := NewServer("http://localhost:8080", google, store, logger, 1*time.Hour)
+
+	googleState, cookies := runAuthorizeForBinding(t, server)
+	if len(cookies) == 0 {
+		t.Fatal("authorize set no cookie, so there is no binding to get wrong")
+	}
+
+	cbParams := url.Values{}
+	cbParams.Set("code", "google-code")
+	cbParams.Set("state", googleState)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/callback?"+cbParams.Encode(), nil)
+	req.AddCookie(&http.Cookie{Name: cookies[0].Name, Value: "not-the-issued-binding"})
+	w := httptest.NewRecorder()
+	server.CallbackHandler(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d for a callback with a wrong binding cookie, got %d: %s",
+			http.StatusBadRequest, w.Code, w.Body.String())
+	}
+}
+
+func TestServer_AuthorizeHandler_SetsBindingCookie(t *testing.T) {
+	store := NewMemoryTokenStore()
+	defer store.Close()
+
+	google, cleanup := newFakeGoogleProvider(t)
+	defer cleanup()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	server := NewServer("http://localhost:8080", google, store, logger, 1*time.Hour)
+
+	_, cookies := runAuthorizeForBinding(t, server)
+	if len(cookies) != 1 {
+		t.Fatalf("expected exactly one cookie on the authorize response, got %d", len(cookies))
+	}
+	c := cookies[0]
+
+	if c.Value == "" {
+		t.Error("binding cookie has an empty value")
+	}
+	if !c.HttpOnly {
+		t.Error("binding cookie must be HttpOnly so page script cannot read it")
+	}
+	// Google's redirect back is a cross-site top-level GET, which Lax permits
+	// and Strict would drop.
+	if c.SameSite != http.SameSiteLaxMode {
+		t.Errorf("binding cookie must be SameSite=Lax, got %v", c.SameSite)
+	}
+	if c.Path != "/oauth/callback" {
+		t.Errorf("binding cookie should be scoped to the callback, got path %q", c.Path)
+	}
+	if c.MaxAge <= 0 {
+		t.Errorf("binding cookie needs a bounded lifetime, got Max-Age %d", c.MaxAge)
+	}
+}
+
+func TestServer_AuthorizeHandler_BindingCookieSecureOverHTTPS(t *testing.T) {
+	store := NewMemoryTokenStore()
+	defer store.Close()
+
+	google, cleanup := newFakeGoogleProvider(t)
+	defer cleanup()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	server := NewServer("https://mcp.example.com", google, store, logger, 1*time.Hour)
+
+	_, cookies := runAuthorizeForBinding(t, server)
+	if len(cookies) != 1 {
+		t.Fatalf("expected exactly one cookie on the authorize response, got %d", len(cookies))
+	}
+	if !cookies[0].Secure {
+		t.Error("binding cookie must be Secure when the issuer is https")
 	}
 }
