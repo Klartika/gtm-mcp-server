@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -43,15 +44,35 @@ const (
 	bindingCookieMaxAge    = 600
 )
 
+// issuerIsHTTPS parses rather than prefix-matches, so an issuer that differs
+// only in case or leading space cannot silently select the weaker regime.
 func issuerIsHTTPS(issuer string) bool {
-	return strings.HasPrefix(issuer, "https://")
+	u, err := url.Parse(strings.TrimSpace(issuer))
+	return err == nil && u.Scheme == "https"
 }
 
-// bindingCookieNameFor picks the name this issuer's flows use. It must give the
-// same answer at /authorize and at the callback, so both sides pass the issuer
-// recorded on the state row.
-func bindingCookieNameFor(issuer string) string {
-	if issuerIsHTTPS(issuer) {
+// bindingRegimeIsHTTPS decides which cookie regime a flow uses, taking the
+// stronger of the configured base URL and the issuer resolved for the flow.
+//
+// The resolved issuer alone is not safe to trust here. `URLResolver.Resolve`
+// derives the scheme from `X-Forwarded-Proto`, which — unlike `X-Forwarded-For`
+// in the rate limiter — carries no TrustProxy gate. The attacker is the party
+// who calls /authorize in this attack, so they own that header: suppressing it
+// on an https deployment would otherwise hand them the unprefixed, non-Secure
+// cookie, which is exactly the one a sibling subdomain can plant, reopening the
+// injection path this whole mechanism exists to close.
+//
+// Taking the stronger of the two means the regime can only ever be raised by
+// the request, never lowered below what the operator configured.
+func (s *Server) bindingRegimeIsHTTPS(stateIssuer string) bool {
+	return issuerIsHTTPS(s.baseURL) || issuerIsHTTPS(stateIssuer)
+}
+
+// bindingCookieNameFor picks the name a flow uses. It must give the same answer
+// at /authorize and at the callback, so both sides derive it the same way from
+// the issuer recorded on the state row.
+func bindingCookieNameFor(httpsRegime bool) string {
+	if httpsRegime {
 		return bindingCookieHostName
 	}
 	return bindingCookiePlainName
@@ -78,29 +99,29 @@ func bindingMatches(cookieValue, expectedHash string) bool {
 // top-level GET navigation, which Lax permits and Strict would drop. The
 // cookie is marked Secure whenever the issuer we resolved for this request is
 // https, so a plain-http local run still works.
-func setBindingCookie(w http.ResponseWriter, value, issuer string) {
+func setBindingCookie(w http.ResponseWriter, value string, httpsRegime bool) {
 	// The prefix is only honoured with Path=/ and Secure and no Domain, so the
 	// https path cannot keep the tighter callback scoping. The cookie is opaque,
 	// HttpOnly and short-lived, and grants nothing without the matching state
 	// row, so sending it on every request to this host is a fair trade for
 	// closing the injection path.
 	path := "/oauth/callback"
-	if issuerIsHTTPS(issuer) {
+	if httpsRegime {
 		path = "/"
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name:     bindingCookieNameFor(issuer),
+		Name:     bindingCookieNameFor(httpsRegime),
 		Value:    value,
 		Path:     path,
 		MaxAge:   bindingCookieMaxAge,
 		HttpOnly: true,
-		Secure:   issuerIsHTTPS(issuer),
+		Secure:   httpsRegime,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
 
-func bindingFromRequest(r *http.Request, issuer string) string {
-	c, err := r.Cookie(bindingCookieNameFor(issuer))
+func bindingFromRequest(r *http.Request, httpsRegime bool) string {
+	c, err := r.Cookie(bindingCookieNameFor(httpsRegime))
 	if err != nil {
 		return ""
 	}

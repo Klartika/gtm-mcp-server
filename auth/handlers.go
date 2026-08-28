@@ -161,7 +161,7 @@ func (s *Server) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setBindingCookie(w, binding, authState.Issuer)
+	setBindingCookie(w, binding, s.bindingRegimeIsHTTPS(authState.Issuer))
 
 	// Redirect to Google OAuth
 	googleAuthURL := s.google.AuthCodeURL(authState.State)
@@ -216,7 +216,7 @@ func (s *Server) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 	// The browser that completed Google consent must be the one that started
 	// the flow, or an attacker can have a victim's code minted against their
 	// own registered redirect_uri. Checked before the code is spent.
-	binding := bindingFromRequest(r, authState.Issuer)
+	binding := bindingFromRequest(r, s.bindingRegimeIsHTTPS(authState.Issuer))
 	if !bindingMatches(binding, authState.BindingHash) {
 		s.logger.Error("federation state binding mismatch",
 			"client_id", authState.ClientID,

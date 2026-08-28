@@ -1293,3 +1293,158 @@ func TestServer_CallbackHandler_UnprefixedCookieDoesNotSatisfyAnHTTPSFlow(t *tes
 		t.Errorf("refused callback exchanged the code with Google %d time(s), want 0", n)
 	}
 }
+
+// runAuthorizeWithHeaders drives /authorize with a chosen Host and headers, so
+// a test can play the attacker who controls the request that starts the flow.
+func runAuthorizeWithHeaders(t *testing.T, server *Server, host string, headers map[string]string) (string, []*http.Cookie) {
+	t.Helper()
+
+	params := url.Values{}
+	params.Set("response_type", "code")
+	params.Set("client_id", "test-client")
+	params.Set("redirect_uri", "https://claude.ai/api/mcp/auth_callback")
+	params.Set("state", "claude-state")
+	params.Set("code_challenge", base64.RawURLEncoding.EncodeToString(func() []byte { h := sha256.Sum256([]byte("verifier")); return h[:] }()))
+	params.Set("code_challenge_method", "S256")
+
+	req := httptest.NewRequest(http.MethodGet, "/authorize?"+params.Encode(), nil)
+	req.Host = host
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	w := httptest.NewRecorder()
+	server.AuthorizeHandler(w, req)
+	if w.Code != http.StatusFound {
+		t.Fatalf("authorize: expected 302, got %d: %s", w.Code, w.Body.String())
+	}
+
+	googleURL, err := url.Parse(w.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("authorize: bad Location: %v", err)
+	}
+	return googleURL.Query().Get("state"), w.Result().Cookies()
+}
+
+// The dynamic URL resolver decides the scheme from X-Forwarded-Proto, which is
+// trusted with no TrustProxy gate. The party that calls /authorize in this
+// attack is the attacker, so they own that header — and omitting it must not
+// downgrade the cookie to the plantable unprefixed regime on an https server.
+func TestServer_AuthorizeHandler_BindingRegimeCannotBeDowngradedByForwardedProto(t *testing.T) {
+	store := NewMemoryTokenStore()
+	defer store.Close()
+
+	google, cleanup := newFakeGoogleProvider(t)
+	defer cleanup()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	server := NewServer("https://mcp.example.com", google, store, logger, 1*time.Hour)
+	server.SetURLResolver(NewURLResolver("https://mcp.example.com", []string{"gtm-mcp:8080"}))
+
+	// No X-Forwarded-Proto, so the resolver returns http://mcp.example.com.
+	_, cookies := runAuthorizeWithHeaders(t, server, "mcp.example.com", nil)
+	if len(cookies) != 1 {
+		t.Fatalf("expected one cookie, got %d", len(cookies))
+	}
+
+	if got := cookies[0].Name; got != "__Host-gtm_fed_binding" {
+		t.Errorf("a suppressed X-Forwarded-Proto downgraded the cookie to %q", got)
+	}
+	if !cookies[0].Secure {
+		t.Error("a suppressed X-Forwarded-Proto dropped the Secure flag")
+	}
+}
+
+// The other half: having downgraded the flow, the attacker plants the
+// unprefixed cookie a sibling subdomain can set. The callback must refuse it.
+func TestServer_CallbackHandler_DowngradedFlowStillRejectsAnUnprefixedCookie(t *testing.T) {
+	store := NewMemoryTokenStore()
+	defer store.Close()
+
+	google, exchanges, cleanup := newCountingFakeGoogleProvider(t)
+	defer cleanup()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	server := NewServer("https://mcp.example.com", google, store, logger, 1*time.Hour)
+	server.SetURLResolver(NewURLResolver("https://mcp.example.com", []string{"gtm-mcp:8080"}))
+
+	googleState, cookies := runAuthorizeWithHeaders(t, server, "mcp.example.com", nil)
+	if len(cookies) != 1 {
+		t.Fatalf("expected one cookie, got %d", len(cookies))
+	}
+
+	cbParams := url.Values{}
+	cbParams.Set("code", "google-code")
+	cbParams.Set("state", googleState)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/callback?"+cbParams.Encode(), nil)
+	req.Host = "mcp.example.com"
+	req.AddCookie(&http.Cookie{Name: "gtm_fed_binding", Value: cookies[0].Value})
+	w := httptest.NewRecorder()
+	server.CallbackHandler(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusBadRequest, w.Code, w.Body.String())
+	}
+	if n := exchanges.Load(); n != 0 {
+		t.Errorf("refused callback exchanged the code with Google %d time(s), want 0", n)
+	}
+}
+
+func TestIssuerIsHTTPS(t *testing.T) {
+	tests := []struct {
+		issuer string
+		want   bool
+	}{
+		{"https://mcp.example.com", true},
+		{"HTTPS://mcp.example.com", true},
+		{" https://mcp.example.com", true},
+		{"http://localhost:8080", false},
+		{"", false},
+		{"httpsx://mcp.example.com", false},
+		{"not a url", false},
+	}
+
+	for _, tt := range tests {
+		if got := issuerIsHTTPS(tt.issuer); got != tt.want {
+			t.Errorf("issuerIsHTTPS(%q) = %v, want %v", tt.issuer, got, tt.want)
+		}
+	}
+}
+
+// The callback derives the regime from the issuer recorded at authorize time,
+// never by re-resolving the callback request. Google's redirect back carries
+// none of the proxy headers the original request had, so re-resolving would
+// look for a different cookie name than the one /authorize set and break the
+// legitimate flow.
+func TestServer_CallbackHandler_RegimeComesFromTheRecordedIssuerNotTheCallbackRequest(t *testing.T) {
+	store := NewMemoryTokenStore()
+	defer store.Close()
+
+	google, cleanup := newFakeGoogleProvider(t)
+	defer cleanup()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	server := NewServer("http://localhost:8080", google, store, logger, 1*time.Hour)
+	server.SetURLResolver(NewURLResolver("http://localhost:8080", []string{"mcp.example.com"}))
+
+	// Authorize arrives through the proxy, so it resolves to https and gets the
+	// prefixed cookie.
+	googleState, cookies := runAuthorizeWithHeaders(t, server, "mcp.example.com",
+		map[string]string{"X-Forwarded-Proto": "https"})
+	if len(cookies) != 1 || cookies[0].Name != "__Host-gtm_fed_binding" {
+		t.Fatalf("expected the prefixed cookie from an https-resolved authorize, got %+v", cookies)
+	}
+
+	// The callback carries no X-Forwarded-Proto, as Google's redirect would not.
+	cbParams := url.Values{}
+	cbParams.Set("code", "google-code")
+	cbParams.Set("state", googleState)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/callback?"+cbParams.Encode(), nil)
+	req.Host = "mcp.example.com"
+	req.AddCookie(cookies[0])
+	w := httptest.NewRecorder()
+	server.CallbackHandler(w, req)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("expected the flow to complete, got %d: %s", w.Code, w.Body.String())
+	}
+}
