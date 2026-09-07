@@ -705,6 +705,7 @@ triggers, use `filterJson` because GTM ignores `autoEventFilter`.
 |------|-------------|
 | `get_workspace_status` | Gives the changes and the merge conflicts before a version |
 | `list_versions` | Gives all the container versions with the counts of the items |
+| `get_latest_version_header` | Gets the latest container version header (which may differ from the live version) |
 | `create_version` | Creates a version from the changes in a workspace |
 | `publish_version` | Publishes a version. Asks for approval |
 
