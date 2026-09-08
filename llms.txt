@@ -50,6 +50,8 @@ Always discover IDs by listing — never guess or hardcode them.
 | `get_folder_entities` | Get tags/triggers/variables in a specific folder |
 | `list_zones` | List zones in a workspace |
 | `get_zone` | Get a zone and its configuration |
+| `list_environments` | List container environments (optional `environments` group) |
+| `get_environment` | Get an environment and authorization metadata |
 | `list_built_in_variables` | List enabled built-in variables |
 | `get_workspace_status` | Check pending changes and merge conflicts |
 
@@ -71,6 +73,10 @@ Always discover IDs by listing — never guess or hardcode them.
 | `create_workspace` | Create a new workspace |
 | `update_workspace` | Update a workspace name or description |
 | `delete_workspace` | Delete a workspace and pending changes (requires `confirm: true`) |
+| `create_environment` | Create a user environment |
+| `update_environment` | Update a user environment with fingerprint protection |
+| `reauthorize_environment` | Rotate an environment authorization code (requires `confirm: true`) |
+| `delete_environment` | Delete a user environment (requires `confirm: true`) |
 | `update_account` | Rename a GTM account |
 | `enable_built_in_variables` | Enable built-in variable types |
 | `disable_built_in_variables` | Disable built-in variable types (requires `confirm: true`) |

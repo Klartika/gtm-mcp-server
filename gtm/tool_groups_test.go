@@ -29,6 +29,10 @@ func TestParseToolGroups(t *testing.T) {
 	if _, err := ParseToolGroups([]string{"typo"}); err == nil {
 		t.Fatal("unknown group was accepted")
 	}
+	optional, err := ParseToolGroups([]string{"environments"})
+	if err != nil || !optional.enabled("environments") {
+		t.Fatalf("optional group not accepted: %v, %v", optional, err)
+	}
 }
 
 func TestRegisterToolsForGroupsIsolatesSelectedFamily(t *testing.T) {
@@ -67,11 +71,14 @@ func TestRegisterToolsForGroupsIsolatesSelectedFamily(t *testing.T) {
 	}
 }
 
-func TestDefaultAndAllGroupsExposeCurrentSurface(t *testing.T) {
+func TestDefaultPreservesSurfaceAndAllIncludesOptionalGroups(t *testing.T) {
 	defaults, _ := ParseToolGroups(nil)
 	all, _ := ParseToolGroups([]string{"all"})
-	if got, want := registeredToolCount(t, defaults), registeredToolCount(t, all); got != want || got != 64 {
-		t.Fatalf("default=%d all=%d, want both 64", got, want)
+	if got := registeredToolCount(t, defaults); got != 64 {
+		t.Fatalf("default=%d, want 64", got)
+	}
+	if got := registeredToolCount(t, all); got != 70 {
+		t.Fatalf("all=%d, want 70", got)
 	}
 }
 
