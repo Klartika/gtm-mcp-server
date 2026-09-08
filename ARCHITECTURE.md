@@ -182,6 +182,7 @@ go test ./...          # All tests
 go test ./auth/ -v     # Auth package (OAuth flow, middleware, token store)
 go test ./gtm/ -v      # GTM package (error mapping)
 go test ./middleware/   # Rate limiting
+go run ./cmd/tool-schema-report  # Tool count, payload size, and largest schemas
 ```
 
 Test coverage focuses on:
@@ -191,6 +192,11 @@ Test coverage focuses on:
 - Error mapping (Google API errors → user-friendly messages)
 
 Integration tests (`auth/integration_test.go`) run the full OAuth flow with a mock Google token server.
+
+The default serialized `tools/list` result has an 80 KB regression budget.
+Parity PRs report their byte delta with `tool-schema-report`. If the default
+surface reaches that limit, introduce configurable tool groups before adding
+more tools instead of silently increasing every client's context cost.
 
 ## Key Invariants
 
