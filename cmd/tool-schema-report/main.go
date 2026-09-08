@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 	"time"
 
 	"gtm-mcp-server/gtm"
@@ -25,6 +26,7 @@ type toolSize struct {
 
 func main() {
 	top := flag.Int("top", 10, "number of largest tool definitions to print")
+	groupList := flag.String("groups", "", "comma-separated GTM tool groups; empty uses the default set")
 	flag.Parse()
 	if *top < 0 {
 		log.Fatal("-top must be zero or greater")
@@ -37,7 +39,15 @@ func main() {
 		Name:    "tool-schema-report",
 		Version: "development",
 	}, nil)
-	gtm.RegisterTools(server)
+	var names []string
+	if strings.TrimSpace(*groupList) != "" {
+		names = strings.Split(*groupList, ",")
+	}
+	groups, err := gtm.ParseToolGroups(names)
+	if err != nil {
+		log.Fatal(err)
+	}
+	gtm.RegisterToolsForGroups(server, groups)
 
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	serverSession, err := server.Connect(ctx, serverTransport, nil)
@@ -94,6 +104,7 @@ func main() {
 		return sizes[i].bytes > sizes[j].bytes
 	})
 
+	fmt.Printf("groups: %s\n", strings.Join(groups.Names(), ","))
 	fmt.Printf("tools: %d\n", len(result.Tools))
 	fmt.Printf("tools/list result bytes: %d\n", len(payload))
 	fmt.Printf("estimated tokens at 4 bytes/token: %d\n", (len(payload)+3)/4)

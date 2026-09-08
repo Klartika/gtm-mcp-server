@@ -34,3 +34,20 @@ func TestAutoRefreshMaxAge_HonoursEnv(t *testing.T) {
 		t.Errorf("AutoRefreshMaxAge = %v, want %v", cfg.AutoRefreshMaxAge, want)
 	}
 }
+
+func TestToolGroupsFromEnvironment(t *testing.T) {
+	t.Setenv("GTM_TOOL_GROUPS", "accounts, zones, tags")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"accounts", "zones", "tags"}
+	if len(cfg.ToolGroups) != len(want) {
+		t.Fatalf("ToolGroups=%v", cfg.ToolGroups)
+	}
+	for i := range want {
+		if cfg.ToolGroups[i] != want[i] {
+			t.Fatalf("ToolGroups=%v, want %v", cfg.ToolGroups, want)
+		}
+	}
+}

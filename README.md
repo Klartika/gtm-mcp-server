@@ -25,22 +25,22 @@ service-account authentication for self-hosted automation.
 |---|---|
 | Version in `server.json` | `1.10.1` |
 | Transport | MCP Streamable HTTP |
-| Runtime tools | 55 GTM tools and 2 utility tools |
+| Runtime tools | 64 GTM tools and 2 utility tools |
 | MCP resources | 8 resource definitions |
 | MCP prompts | 6 prompts |
-| Official GTM API coverage | 55 of 106 methods |
+| Official GTM API coverage | 64 of 106 methods |
 | Planned parity target | 101 of 106 methods |
 | Hosted endpoint | `https://mcp.gtmeditor.com` |
 
-API parity is **not complete**. The project has implemented 55 methods from
-Google's 106-method GTM v2 discovery surface. Another 46 methods are planned.
+API parity is **not complete**. The project has implemented 64 methods from
+Google's 106-method GTM v2 discovery surface. Another 37 methods are planned.
 The five `accounts.user_permissions` methods are intentionally excluded because
 granting and revoking GTM access needs a separate privilege-management design.
 
-The remaining roadmap includes workspace synchronization and preview, folder
-lifecycle operations, version state changes, container combination and tag-ID
-moves, zones, Google tag configurations, environments, destinations, and
-resource revert operations.
+The remaining roadmap includes workspace synchronization and conflict
+resolution, folder lifecycle operations, version state changes, container
+combination and tag-ID moves, Google tag configurations, environments,
+destinations, and resource revert operations.
 
 Tool count and API-method count are different. Some tools provide local
 guidance, while some helpers cover more than one Google API call.
@@ -158,10 +158,14 @@ request. Inputs and outputs are structured JSON.
 |---|---|
 | `list_workspaces` | List workspaces in a container |
 | `create_workspace` | Create a workspace |
+| `get_workspace` | Get workspace metadata and its current fingerprint |
+| `update_workspace` | Update selected workspace fields |
+| `delete_workspace` | Delete a workspace; requires `confirm: true` |
+| `quick_preview_workspace` | Compile an ephemeral preview without saving or publishing |
 | `get_workspace_status` | Show pending changes and merge conflicts |
 
-Workspace get/update/delete, quick preview, synchronization, bulk update, and
-conflict resolution are part of the remaining parity roadmap.
+Workspace synchronization, bulk update, and conflict resolution remain on the
+parity roadmap.
 
 ### Tags
 
@@ -211,6 +215,18 @@ GTM drops `autoEventFilter` for those trigger types.
 
 Folder create/get/update/delete/move/revert and built-in-variable revert remain
 on the parity roadmap.
+
+### Zones
+
+| Tool | Purpose |
+|---|---|
+| `list_zones` | List all zones across every result page |
+| `get_zone` | Get boundary, child-container, and type-restriction configuration |
+| `create_zone` | Create a workspace zone |
+| `update_zone` | Update selected fields with fingerprint concurrency control |
+| `delete_zone` | Delete a zone; requires `confirm: true` |
+
+Zone revert remains in the later cross-resource revert slice.
 
 ### Custom templates
 
@@ -419,6 +435,7 @@ When using the named volume, set `TOKEN_STORE_PATH=/data/tokens.json` in
 | `ALLOWED_HOSTS` | empty | Additional trusted hosts for Docker/internal URL resolution |
 | `TRUST_PROXY` | `false` | Trust the rightmost `X-Forwarded-For` hop for rate limiting |
 | `LOG_LEVEL` | `info` | Set `debug` for additional structured logs |
+| `GTM_TOOL_GROUPS` | current groups | Comma-separated tool families advertised through MCP |
 
 If OAuth and service-account credentials are both absent, the server starts in
 open mode. Use open mode only for isolated local development.
@@ -431,6 +448,18 @@ per-client rate limits.
 `ALLOWED_HOSTS` is a comma-separated allowlist used when the same server is
 reached through trusted internal Docker hostnames. Do not add arbitrary public
 hosts.
+
+`GTM_TOOL_GROUPS` controls schema size for clients that need only part of the
+API. Available groups are `accounts`, `workspaces`, `tags`, `triggers`,
+`variables`, `folders`, `builtins`, `zones`, `templates`, `server`, and
+`guidance`. Leaving it unset preserves the current complete 64-tool surface.
+Use `all` to include every current and future parity family, or select a subset:
+
+```text
+GTM_TOOL_GROUPS=accounts,workspaces,tags,triggers,variables
+```
+
+The two connection utility tools remain available regardless of this setting.
 
 ## Releases and deployment
 
@@ -469,11 +498,12 @@ go test ./... -count=1
 go vet ./...
 staticcheck ./...
 go run ./cmd/tool-schema-report
+go run ./cmd/tool-schema-report -groups tags,zones
 ```
 
 The schema report prints the GTM tool count, serialized `tools/list` size, token
 estimate, and largest definitions. The GTM tool surface currently serializes to
-65,549 bytes for 55 tools. A regression test enforces an 80,000-byte ceiling so
+78,734 bytes for 64 tools. A regression test enforces an 80,000-byte ceiling so
 new parity work does not silently consume unlimited model context.
 
 Pull requests run `govulncheck`, `gosec`, Gitleaks, Trivy, `staticcheck`, and
@@ -485,7 +515,7 @@ authentication internals, token persistence, and security invariants.
 
 ## Current limitations
 
-- Official GTM v2 API parity is 55/106, with a target of 101/106.
+- Official GTM v2 API parity is 64/106, with a target of 101/106.
 - The five account user-permission methods are outside the current product
   scope.
 - The server supports Streamable HTTP only. Stdio transport is planned but is
