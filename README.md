@@ -613,6 +613,13 @@ limit.
 The server writes the log event `auth_auto_refresh_capped` for each refusal.
 The event contains the client ID and the age of the refused sequence.
 
+### Runtime version
+
+The MCP handshake and `/health` read their version from `server.json`, embedded
+when the binary is built. Update its `version` field for a release, then rebuild
+and deploy. No separate version edit in Go code is needed. Changing a JSON file
+beside an already-running binary does not change that binary’s version.
+
 ### Google Cloud Setup
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
