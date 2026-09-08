@@ -25,22 +25,21 @@ service-account authentication for self-hosted automation.
 |---|---|
 | Version in `server.json` | `1.10.1` |
 | Transport | MCP Streamable HTTP |
-| Runtime tools | 64 GTM tools by default; 70 with `GTM_TOOL_GROUPS=all`, plus 2 utility tools |
+| Runtime tools | 64 GTM tools by default; 80 with `GTM_TOOL_GROUPS=all`, plus 2 utility tools |
 | MCP resources | 8 resource definitions |
 | MCP prompts | 6 prompts |
-| Official GTM API coverage | 70 of 106 methods |
+| Official GTM API coverage | 80 of 106 methods |
 | Planned parity target | 101 of 106 methods |
 | Hosted endpoint | `https://mcp.gtmeditor.com` |
 
-API parity is **not complete**. The project has implemented 70 methods from
-Google's 106-method GTM v2 discovery surface. Another 31 methods are planned.
+API parity is **not complete**. The project has implemented 80 methods from
+Google's 106-method GTM v2 discovery surface. Another 21 methods are planned.
 The five `accounts.user_permissions` methods are intentionally excluded because
 granting and revoking GTM access needs a separate privilege-management design.
 
 The remaining roadmap includes workspace synchronization and conflict
-resolution, folder lifecycle operations, version state changes, container
-combination and tag-ID moves, Google tag configurations, destinations, and
-resource revert operations.
+resolution, folder lifecycle operations, version state changes, and resource
+revert operations.
 
 Tool count and API-method count are different. Some tools provide local
 guidance, while some helpers cover more than one Google API call.
@@ -151,6 +150,8 @@ request. Inputs and outputs are structured JSON.
 | `create_container` | Create a web, app, AMP, or server container |
 | `update_container` | Rename a container while preserving its other settings |
 | `delete_container` | Permanently delete a container; requires `confirm: true` |
+| `combine_containers` | Merge a source container into a target; requires `confirm: true` |
+| `move_tag_id` | Move a tag ID into a new container; requires confirmation and terms acceptance |
 
 ### Workspaces
 
@@ -242,8 +243,27 @@ The `environments` tool group is optional. Enable it with
 | `reauthorize_environment` | Rotate the authorization code; requires `confirm: true` |
 | `delete_environment` | Delete a user environment; requires `confirm: true` |
 
-The Live and Latest environments are managed by GTM. Create, update, and
-delete operations apply to user environments.
+The Live and Latest environments are managed by GTM. Creation and deletion
+apply to user environments; GTM permits URL and debug updates on other types.
+
+### Destinations and Google tag configurations
+
+These tools are in the optional `destinations` and `gtag` groups.
+
+| Tool | Purpose |
+|---|---|
+| `list_destinations` | List Google tag destinations linked to a container |
+| `get_destination` | Get a destination by its link ID |
+| `link_destination` | Move a destination to a container; requires `confirm: true` |
+| `list_google_tag_configs` | List Google tag configurations in a workspace |
+| `get_google_tag_config` | Get a Google tag configuration |
+| `create_google_tag_config` | Create a Google tag configuration |
+| `update_google_tag_config` | Update a configuration with fingerprint protection |
+| `delete_google_tag_config` | Delete a configuration; requires `confirm: true` |
+
+Container combine, tag-ID move, and destination link operations do not copy or
+enable user permissions. Account permission management remains outside the
+current parity target.
 
 ### Custom templates
 
@@ -469,9 +489,9 @@ hosts.
 `GTM_TOOL_GROUPS` controls schema size for clients that need only part of the
 API. Available groups are `accounts`, `workspaces`, `tags`, `triggers`,
 `variables`, `folders`, `builtins`, `zones`, `templates`, `server`, `guidance`,
-and `environments`. Leaving it unset preserves the established 64-tool surface.
-The newer `environments` group is opt-in. Use `all` to include every current
-and future parity family, or select a subset:
+`environments`, `destinations`, `gtag`, and `container-admin`. Leaving it unset
+preserves the established 64-tool surface. New parity groups are opt-in. Use
+`all` to include every current and future parity family, or select a subset:
 
 ```text
 GTM_TOOL_GROUPS=accounts,workspaces,tags,triggers,variables
@@ -523,7 +543,7 @@ The schema report prints the GTM tool count, serialized `tools/list` size, token
 estimate, and largest definitions. The default GTM tool surface serializes to
 78,734 bytes for 64 tools. A regression test enforces an 80,000-byte ceiling so
 new parity work does not silently consume unlimited model context. The `all`
-group exposes 70 GTM tools, including environments.
+group exposes 80 GTM tools and serializes to 99,593 bytes.
 
 Pull requests run `govulncheck`, `gosec`, Gitleaks, Trivy, `staticcheck`, and
 CodeQL. Request-level GTM tests use local fake Google endpoints. Mutating live
@@ -537,7 +557,7 @@ For a deep dive into the Google Tag Manager MCP server, read the [Deep Wiki](htt
 
 ## Current limitations
 
-- Official GTM v2 API parity is 70/106, with a target of 101/106.
+- Official GTM v2 API parity is 80/106, with a target of 101/106.
 - The five account user-permission methods are outside the current product
   scope.
 - The server supports Streamable HTTP only. Stdio transport is planned but is
