@@ -755,6 +755,7 @@ gtm://best-practices/naming-organization    # Names, folders, and unused items
 gtm://best-practices/safe-edit-workflow     # Workspace, difference, version, publication
 gtm://best-practices/ga4-consent            # GA4 patterns and consent mode v2
 gtm://best-practices/server-side            # Clients, transformations, PII, first-party domains
+gtm://best-practices/tool-input-formats      # JSON formats used by mutation tools
 ```
 
 ### Prompts
