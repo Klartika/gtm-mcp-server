@@ -34,6 +34,8 @@ func RegisterTools(server *mcp.Server) {
 	registerGetLatestVersionHeader(server)
 	registerGetVersion(server)
 	registerGetLiveVersion(server)
+	registerListZones(server)
+	registerGetZone(server)
 
 	// Write operations
 	registerCreateTag(server)
@@ -51,6 +53,9 @@ func RegisterTools(server *mcp.Server) {
 	registerCreateWorkspace(server)
 	registerUpdateWorkspace(server)
 	registerDeleteWorkspace(server)
+	registerCreateZone(server)
+	registerUpdateZone(server)
+	registerDeleteZone(server)
 
 	// Workspace status
 	registerGetWorkspaceStatus(server)

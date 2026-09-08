@@ -48,6 +48,8 @@ Always discover IDs by listing — never guess or hardcode them.
 | `get_variable` | Get full variable details by ID |
 | `list_folders` | List folders in a workspace |
 | `get_folder_entities` | Get tags/triggers/variables in a specific folder |
+| `list_zones` | List zones in a workspace |
+| `get_zone` | Get a zone and its configuration |
 | `list_built_in_variables` | List enabled built-in variables |
 | `get_workspace_status` | Check pending changes and merge conflicts |
 
@@ -72,6 +74,9 @@ Always discover IDs by listing — never guess or hardcode them.
 | `update_account` | Rename a GTM account |
 | `enable_built_in_variables` | Enable built-in variable types |
 | `disable_built_in_variables` | Disable built-in variable types (requires `confirm: true`) |
+| `create_zone` | Create a workspace zone |
+| `update_zone` | Update selected zone fields |
+| `delete_zone` | Delete a zone (requires `confirm: true`) |
 
 ### Server-Side Container Tools
 | Tool | Purpose |
