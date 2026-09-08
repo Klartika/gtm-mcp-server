@@ -87,7 +87,8 @@ Always discover IDs by listing — never guess or hardcode them.
 | `get_workspace_status` | Check pending changes and conflicts before versioning |
 | `create_version` | Create a version from workspace changes |
 | `publish_version` | Publish a version to go live (requires `confirm: true`) |
-| `list_versions` | List all container versions |
+| `list_versions` | List all container version headers, across all pages |
+| `get_latest_version_header` | Get the latest version header; latest is not necessarily live |
 
 ### Templates
 | Tool | Purpose |

@@ -27,6 +27,7 @@ func RegisterTools(server *mcp.Server) {
 	registerListTemplates(server)
 	registerGetTemplate(server)
 	registerListVersions(server)
+	registerGetLatestVersionHeader(server)
 
 	// Write operations
 	registerCreateTag(server)
