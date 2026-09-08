@@ -18,6 +18,8 @@ func RegisterTools(server *mcp.Server) {
 	registerLookupContainer(server)
 	registerGetContainerSnippet(server)
 	registerListWorkspaces(server)
+	registerGetWorkspace(server)
+	registerQuickPreviewWorkspace(server)
 	registerListTags(server)
 	registerGetTag(server)
 	registerListTriggers(server)
@@ -47,6 +49,8 @@ func RegisterTools(server *mcp.Server) {
 	registerUpdateContainer(server)
 	registerDeleteContainer(server)
 	registerCreateWorkspace(server)
+	registerUpdateWorkspace(server)
+	registerDeleteWorkspace(server)
 
 	// Workspace status
 	registerGetWorkspaceStatus(server)

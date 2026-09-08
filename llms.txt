@@ -38,6 +38,8 @@ Always discover IDs by listing — never guess or hardcode them.
 | `lookup_container` | Find a container by destinationId or public tagId |
 | `get_container_snippet` | Get the web snippet or server container configuration |
 | `list_workspaces` | List workspaces in a container (needs accountId, containerId) |
+| `get_workspace` | Get workspace metadata and its fingerprint |
+| `quick_preview_workspace` | Compile an ephemeral preview without saving or publishing it |
 | `list_tags` | List all tags in a workspace |
 | `get_tag` | Get full tag details by ID |
 | `list_triggers` | List all triggers in a workspace |
@@ -65,6 +67,8 @@ Always discover IDs by listing — never guess or hardcode them.
 | `update_container` | Rename a container |
 | `delete_container` | Remove a container (requires `confirm: true`) |
 | `create_workspace` | Create a new workspace |
+| `update_workspace` | Update a workspace name or description |
+| `delete_workspace` | Delete a workspace and pending changes (requires `confirm: true`) |
 | `update_account` | Rename a GTM account |
 | `enable_built_in_variables` | Enable built-in variable types |
 | `disable_built_in_variables` | Disable built-in variable types (requires `confirm: true`) |
