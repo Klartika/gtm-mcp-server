@@ -21,14 +21,19 @@ var defaultToolGroupNames = []string{
 	"folders", "builtins", "zones", "templates", "server", "guidance",
 }
 
+var optionalToolGroupNames = []string{"environments"}
+
 // ParseToolGroups validates GTM_TOOL_GROUPS. An empty value preserves the
 // complete pre-grouping tool surface. "all" also enables future families.
 func ParseToolGroups(names []string) (ToolGroups, error) {
 	if len(names) == 0 {
 		names = defaultToolGroupNames
 	}
-	known := make(map[string]bool, len(defaultToolGroupNames)+1)
+	known := make(map[string]bool, len(defaultToolGroupNames)+len(optionalToolGroupNames)+1)
 	for _, name := range defaultToolGroupNames {
+		known[name] = true
+	}
+	for _, name := range optionalToolGroupNames {
 		known[name] = true
 	}
 	known["all"] = true
@@ -127,6 +132,15 @@ func RegisterToolsForGroups(server *mcp.Server, groups ToolGroups) {
 		registerCreateZone(server)
 		registerUpdateZone(server)
 		registerDeleteZone(server)
+	}
+
+	if groups.enabled("environments") {
+		registerListEnvironments(server)
+		registerGetEnvironment(server)
+		registerCreateEnvironment(server)
+		registerUpdateEnvironment(server)
+		registerReauthorizeEnvironment(server)
+		registerDeleteEnvironment(server)
 	}
 
 	if groups.enabled("builtins") {
