@@ -160,6 +160,7 @@ Map response → tool output struct
 | `SERVICE_ACCOUNT_API_KEY` | For S2S | — | Shared API key for team access |
 | `GOOGLE_SERVICE_ACCOUNT_KEY_JSON` | For S2S | — | SA credentials (omit on GCP for Workload Identity) |
 | `LOG_LEVEL` | No | `info` | `debug` or `info` |
+| `GTM_TOOL_GROUPS` | No | current groups | Comma-separated MCP tool families, or `all` |
 
 ## Deployment
 
