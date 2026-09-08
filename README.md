@@ -643,6 +643,8 @@ beside an already-running binary does not change that binary’s version.
 |------|-------------|
 | `list_accounts` | Gives all the GTM accounts |
 | `list_containers` | Gives the containers in an account |
+| `lookup_container` | Finds a container by a destination ID or GTM public tag ID |
+| `get_container_snippet` | Gives the install snippet or server container configuration |
 | `list_workspaces` | Gives the workspaces in a container |
 | `list_tags` | Gives all the tags in a workspace |
 | `get_tag` | Gives the data of one tag |
@@ -713,6 +715,8 @@ triggers, use `filterJson` because GTM ignores `autoEventFilter`.
 | `get_workspace_status` | Gives the changes and the merge conflicts before a version |
 | `list_versions` | Gives all the container versions with the counts of the items |
 | `get_latest_version_header` | Gets the latest container version header (which may differ from the live version) |
+| `get_version` | Gets a saved container version with all of its entities |
+| `get_live_version` | Gets the published live version with all of its entities |
 | `create_version` | Creates a version from the changes in a workspace |
 | `publish_version` | Publishes a version. Asks for approval |
 

@@ -35,6 +35,8 @@ Always discover IDs by listing — never guess or hardcode them.
 |------|---------|
 | `list_accounts` | List all GTM accounts the user has access to |
 | `list_containers` | List containers in an account (needs accountId) |
+| `lookup_container` | Find a container by destinationId or public tagId |
+| `get_container_snippet` | Get the web snippet or server container configuration |
 | `list_workspaces` | List workspaces in a container (needs accountId, containerId) |
 | `list_tags` | List all tags in a workspace |
 | `get_tag` | Get full tag details by ID |
@@ -89,6 +91,8 @@ Always discover IDs by listing — never guess or hardcode them.
 | `publish_version` | Publish a version to go live (requires `confirm: true`) |
 | `list_versions` | List all container version headers, across all pages |
 | `get_latest_version_header` | Get the latest version header; latest is not necessarily live |
+| `get_version` | Get a saved version with all entity collections |
+| `get_live_version` | Get the published live version with all entity collections |
 
 ### Templates
 | Tool | Purpose |

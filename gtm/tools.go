@@ -15,6 +15,8 @@ func RegisterTools(server *mcp.Server) {
 	registerListAccounts(server)
 	registerUpdateAccount(server)
 	registerListContainers(server)
+	registerLookupContainer(server)
+	registerGetContainerSnippet(server)
 	registerListWorkspaces(server)
 	registerListTags(server)
 	registerGetTag(server)
@@ -28,6 +30,8 @@ func RegisterTools(server *mcp.Server) {
 	registerGetTemplate(server)
 	registerListVersions(server)
 	registerGetLatestVersionHeader(server)
+	registerGetVersion(server)
+	registerGetLiveVersion(server)
 
 	// Write operations
 	registerCreateTag(server)
