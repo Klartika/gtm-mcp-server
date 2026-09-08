@@ -21,7 +21,10 @@ var defaultToolGroupNames = []string{
 	"folders", "builtins", "zones", "templates", "server", "guidance",
 }
 
-var optionalToolGroupNames = []string{"environments", "destinations", "gtag", "container-admin"}
+var optionalToolGroupNames = []string{
+	"environments", "destinations", "gtag", "container-admin",
+	"folder-admin", "workspace-admin",
+}
 
 // ParseToolGroups validates GTM_TOOL_GROUPS. An empty value preserves the
 // complete pre-grouping tool surface. "all" also enables future families.
@@ -124,6 +127,21 @@ func RegisterToolsForGroups(server *mcp.Server, groups ToolGroups) {
 	if groups.enabled("folders") {
 		registerListFolders(server)
 		registerGetFolderEntities(server)
+	}
+
+	if groups.enabled("folder-admin") {
+		registerGetFolder(server)
+		registerCreateFolder(server)
+		registerUpdateFolder(server)
+		registerDeleteFolder(server)
+		registerMoveEntitiesToFolder(server)
+		registerRevertFolder(server)
+	}
+
+	if groups.enabled("workspace-admin") {
+		registerBulkUpdateWorkspace(server)
+		registerResolveWorkspaceConflict(server)
+		registerSyncWorkspace(server)
 	}
 
 	if groups.enabled("zones") {
