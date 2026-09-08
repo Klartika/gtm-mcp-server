@@ -52,6 +52,10 @@ Always discover IDs by listing — never guess or hardcode them.
 | `get_zone` | Get a zone and its configuration |
 | `list_environments` | List container environments (optional `environments` group) |
 | `get_environment` | Get an environment and authorization metadata |
+| `list_destinations` | List Google tag destinations linked to a container |
+| `get_destination` | Get a destination by its link ID |
+| `list_google_tag_configs` | List workspace Google tag configurations |
+| `get_google_tag_config` | Get a Google tag configuration |
 | `list_built_in_variables` | List enabled built-in variables |
 | `get_workspace_status` | Check pending changes and merge conflicts |
 
@@ -77,6 +81,12 @@ Always discover IDs by listing — never guess or hardcode them.
 | `update_environment` | Update a user environment with fingerprint protection |
 | `reauthorize_environment` | Rotate an environment authorization code (requires `confirm: true`) |
 | `delete_environment` | Delete a user environment (requires `confirm: true`) |
+| `link_destination` | Move a destination to a container (requires `confirm: true`) |
+| `create_google_tag_config` | Create a Google tag configuration |
+| `update_google_tag_config` | Update a Google tag configuration |
+| `delete_google_tag_config` | Delete a Google tag configuration (requires `confirm: true`) |
+| `combine_containers` | Merge one container into another (requires `confirm: true`) |
+| `move_tag_id` | Move a tag ID to a new container (requires confirmation and terms acceptance) |
 | `update_account` | Rename a GTM account |
 | `enable_built_in_variables` | Enable built-in variable types |
 | `disable_built_in_variables` | Disable built-in variable types (requires `confirm: true`) |

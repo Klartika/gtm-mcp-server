@@ -21,7 +21,7 @@ var defaultToolGroupNames = []string{
 	"folders", "builtins", "zones", "templates", "server", "guidance",
 }
 
-var optionalToolGroupNames = []string{"environments"}
+var optionalToolGroupNames = []string{"environments", "destinations", "gtag", "container-admin"}
 
 // ParseToolGroups validates GTM_TOOL_GROUPS. An empty value preserves the
 // complete pre-grouping tool surface. "all" also enables future families.
@@ -141,6 +141,25 @@ func RegisterToolsForGroups(server *mcp.Server, groups ToolGroups) {
 		registerUpdateEnvironment(server)
 		registerReauthorizeEnvironment(server)
 		registerDeleteEnvironment(server)
+	}
+
+	if groups.enabled("destinations") {
+		registerListDestinations(server)
+		registerGetDestination(server)
+		registerLinkDestination(server)
+	}
+
+	if groups.enabled("gtag") {
+		registerListGoogleTagConfigs(server)
+		registerGetGoogleTagConfig(server)
+		registerCreateGoogleTagConfig(server)
+		registerUpdateGoogleTagConfig(server)
+		registerDeleteGoogleTagConfig(server)
+	}
+
+	if groups.enabled("container-admin") {
+		registerCombineContainers(server)
+		registerMoveTagID(server)
 	}
 
 	if groups.enabled("builtins") {
