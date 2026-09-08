@@ -23,7 +23,7 @@ var defaultToolGroupNames = []string{
 
 var optionalToolGroupNames = []string{
 	"environments", "destinations", "gtag", "container-admin",
-	"folder-admin", "workspace-admin",
+	"folder-admin", "workspace-admin", "version-admin", "reverts",
 }
 
 // ParseToolGroups validates GTM_TOOL_GROUPS. An empty value preserves the
@@ -142,6 +142,17 @@ func RegisterToolsForGroups(server *mcp.Server, groups ToolGroups) {
 		registerBulkUpdateWorkspace(server)
 		registerResolveWorkspaceConflict(server)
 		registerSyncWorkspace(server)
+	}
+
+	if groups.enabled("version-admin") {
+		registerDeleteVersion(server)
+		registerUndeleteVersion(server)
+		registerSetLatestVersion(server)
+		registerUpdateVersion(server)
+	}
+
+	if groups.enabled("reverts") {
+		registerRevertWorkspaceEntity(server)
 	}
 
 	if groups.enabled("zones") {

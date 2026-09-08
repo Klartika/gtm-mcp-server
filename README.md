@@ -25,20 +25,17 @@ service-account authentication for self-hosted automation.
 |---|---|
 | Version in `server.json` | `1.10.1` |
 | Transport | MCP Streamable HTTP |
-| Runtime tools | 64 GTM tools by default; 89 with `GTM_TOOL_GROUPS=all`, plus 2 utility tools |
+| Runtime tools | 64 GTM tools by default; 94 with `GTM_TOOL_GROUPS=all`, plus 2 utility tools |
 | MCP resources | 8 resource definitions |
 | MCP prompts | 6 prompts |
-| Official GTM API coverage | 89 of 106 methods |
-| Planned parity target | 101 of 106 methods |
+| Official GTM API coverage | 101 of 106 methods |
+| Product parity target | 101 of 106 methods, reached |
 | Hosted endpoint | `https://mcp.gtmeditor.com` |
 
-API parity is **not complete**. The project has implemented 89 methods from
-Google's 106-method GTM v2 discovery surface. Another 12 methods are planned.
-The five `accounts.user_permissions` methods are intentionally excluded because
-granting and revoking GTM access needs a separate privilege-management design.
-
-The remaining roadmap includes version state changes and resource revert
-operations.
+The agreed API parity scope is complete. The project implements 101 methods
+from Google's 106-method GTM v2 discovery surface. The five
+`accounts.user_permissions` methods are intentionally excluded because granting
+and revoking GTM access needs a separate privilege-management design.
 
 Tool count and API-method count are different. Some tools provide local
 guidance, while some helpers cover more than one Google API call.
@@ -222,7 +219,7 @@ GTM drops `autoEventFilter` for those trigger types.
 | `enable_built_in_variables` | Enable built-in variable types |
 | `disable_built_in_variables` | Disable built-in variable types; requires `confirm: true` |
 
-Built-in-variable revert remains on the parity roadmap.
+Use `revert_workspace_entity` to discard changes to a built-in variable.
 
 ### Zones
 
@@ -234,7 +231,7 @@ Built-in-variable revert remains on the parity roadmap.
 | `update_zone` | Update selected fields with fingerprint concurrency control |
 | `delete_zone` | Delete a zone; requires `confirm: true` |
 
-Zone revert remains in the later cross-resource revert slice.
+Use `revert_workspace_entity` to discard changes to a zone.
 
 ### Environments
 
@@ -304,7 +301,7 @@ not repeat them.
 | `update_transformation` | Update a transformation |
 | `delete_transformation` | Delete a transformation; requires `confirm: true` |
 
-Client and transformation revert methods remain on the parity roadmap.
+Use `revert_workspace_entity` to discard changes to a client or transformation.
 
 ### Versions and publication
 
@@ -316,8 +313,20 @@ Client and transformation revert methods remain on the parity roadmap.
 | `get_live_version` | Get the currently published version and its entities |
 | `create_version` | Create a version from a conflict-free workspace |
 | `publish_version` | Publish a selected version; requires `confirm: true` |
+| `update_version` | Update a saved version's name or description |
+| `delete_version` | Soft-delete a version; requires `confirm: true` |
+| `undelete_version` | Restore a soft-deleted version; requires `confirm: true` |
+| `set_latest_version` | Make a version Latest without publishing; requires `confirm: true` |
 
-Version delete, set-latest, undelete, and update remain on the parity roadmap.
+### Workspace reverts
+
+| Tool | Purpose |
+|---|---|
+| `revert_workspace_entity` | Discard workspace changes to a built-in variable, client, tag, template, transformation, trigger, variable, or zone; requires `confirm: true` |
+
+The tool fetches the current entity fingerprint before calling the matching
+official revert method. A successful result can have `existsAfterRevert: false`
+when the entity does not exist in the latest container version.
 
 ## Safety model
 
@@ -497,9 +506,9 @@ hosts.
 API. Available groups are `accounts`, `workspaces`, `tags`, `triggers`,
 `variables`, `folders`, `builtins`, `zones`, `templates`, `server`, `guidance`,
 `environments`, `destinations`, `gtag`, `container-admin`, `folder-admin`, and
-`workspace-admin`. Leaving it unset preserves the established 64-tool surface.
-New parity groups are opt-in. Use `all` to include every current and future
-parity family, or select a subset:
+`workspace-admin`, `version-admin`, and `reverts`. Leaving it unset preserves
+the established 64-tool surface. New parity groups are opt-in. Use `all` to
+include every current and future parity family, or select a subset:
 
 ```text
 GTM_TOOL_GROUPS=accounts,workspaces,tags,triggers,variables
@@ -551,7 +560,7 @@ The schema report prints the GTM tool count, serialized `tools/list` size, token
 estimate, and largest definitions. The default GTM tool surface serializes to
 78,734 bytes for 64 tools. A regression test enforces an 80,000-byte ceiling so
 new parity work does not silently consume unlimited model context. The `all`
-group exposes 89 GTM tools and serializes to 109,447 bytes.
+group exposes 94 GTM tools and serializes to 115,748 bytes.
 
 Pull requests run `govulncheck`, `gosec`, Gitleaks, Trivy, `staticcheck`, and
 CodeQL. Request-level GTM tests use local fake Google endpoints. Mutating live
@@ -565,9 +574,8 @@ For a deep dive into the Google Tag Manager MCP server, read the [Deep Wiki](htt
 
 ## Current limitations
 
-- Official GTM v2 API parity is 89/106, with a target of 101/106.
-- The five account user-permission methods are outside the current product
-  scope.
+- The 101-method GTM v2 API parity target is complete. The five account
+  user-permission methods remain outside the product scope.
 - The server supports Streamable HTTP only. Stdio transport is planned but is
   not implemented.
 - The optional connection dashboard is under review in

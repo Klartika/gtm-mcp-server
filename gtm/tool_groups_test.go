@@ -77,8 +77,8 @@ func TestDefaultPreservesSurfaceAndAllIncludesOptionalGroups(t *testing.T) {
 	if got := registeredToolCount(t, defaults); got != 64 {
 		t.Fatalf("default=%d, want 64", got)
 	}
-	if got := registeredToolCount(t, all); got != 89 {
-		t.Fatalf("all=%d, want 89", got)
+	if got := registeredToolCount(t, all); got != 94 {
+		t.Fatalf("all=%d, want 94", got)
 	}
 }
 

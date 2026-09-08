@@ -96,6 +96,11 @@ Always discover IDs by listing — never guess or hardcode them.
 | `delete_google_tag_config` | Delete a Google tag configuration (requires `confirm: true`) |
 | `combine_containers` | Merge one container into another (requires `confirm: true`) |
 | `move_tag_id` | Move a tag ID to a new container (requires confirmation and terms acceptance) |
+| `update_version` | Update a saved version's name or description |
+| `delete_version` | Soft-delete a saved version (requires `confirm: true`) |
+| `undelete_version` | Restore a deleted version (requires `confirm: true`) |
+| `set_latest_version` | Make a version Latest without publishing (requires `confirm: true`) |
+| `revert_workspace_entity` | Revert a built-in variable, client, tag, template, transformation, trigger, variable, or zone (requires `confirm: true`) |
 | `update_account` | Rename a GTM account |
 | `enable_built_in_variables` | Enable built-in variable types |
 | `disable_built_in_variables` | Disable built-in variable types (requires `confirm: true`) |
