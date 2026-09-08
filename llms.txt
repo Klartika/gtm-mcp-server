@@ -47,6 +47,7 @@ Always discover IDs by listing — never guess or hardcode them.
 | `list_variables` | List all variables in a workspace |
 | `get_variable` | Get full variable details by ID |
 | `list_folders` | List folders in a workspace |
+| `get_folder` | Get complete folder metadata |
 | `get_folder_entities` | Get tags/triggers/variables in a specific folder |
 | `list_zones` | List zones in a workspace |
 | `get_zone` | Get a zone and its configuration |
@@ -77,6 +78,14 @@ Always discover IDs by listing — never guess or hardcode them.
 | `create_workspace` | Create a new workspace |
 | `update_workspace` | Update a workspace name or description |
 | `delete_workspace` | Delete a workspace and pending changes (requires `confirm: true`) |
+| `bulk_update_workspace` | Apply multiple entity changes (requires `confirm: true`) |
+| `resolve_workspace_conflict` | Replace a conflicting entity (requires `confirm: true`) |
+| `sync_workspace` | Synchronize with the latest version (requires `confirm: true`) |
+| `create_folder` | Create a workspace folder |
+| `update_folder` | Update a workspace folder |
+| `delete_folder` | Delete a workspace folder (requires `confirm: true`) |
+| `move_entities_to_folder` | Move entities into a folder (requires `confirm: true`) |
+| `revert_folder` | Discard workspace changes to a folder (requires `confirm: true`) |
 | `create_environment` | Create a user environment |
 | `update_environment` | Update a user environment with fingerprint protection |
 | `reauthorize_environment` | Rotate an environment authorization code (requires `confirm: true`) |
