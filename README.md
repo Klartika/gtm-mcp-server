@@ -552,6 +552,9 @@ tests must use a disposable container and clean up their entities.
 See [ARCHITECTURE.md](ARCHITECTURE.md) for package boundaries, request flow,
 authentication internals, token persistence, and security invariants.
 
+For a deep dive into the Google Tag Manager MCP server, read the [Deep Wiki](https://deepwiki.com/sprawz/gtm-mcp-server).
+
+
 ## Current limitations
 
 - Official GTM v2 API parity is 80/106, with a target of 101/106.
