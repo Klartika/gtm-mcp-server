@@ -24,10 +24,7 @@ import (
 //go:embed llms.txt
 var llmsTxt string
 
-const (
-	serverName    = "gtm-mcp-server"
-	serverVersion = "1.10.0"
-)
+const serverName = "gtm-mcp-server"
 
 func main() {
 	// Set up structured logging to stderr (stdout is reserved for MCP in stdio mode)
@@ -35,6 +32,12 @@ func main() {
 		Level: slog.LevelInfo,
 	}))
 	slog.SetDefault(logger)
+
+	serverVersion, err := parseServerVersion(serverMetadata)
+	if err != nil {
+		logger.Error("invalid embedded server metadata", "error", err)
+		os.Exit(1)
+	}
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -60,9 +63,19 @@ func main() {
 	// Add logging middleware
 	server.AddReceivingMiddleware(middleware.NewLoggingMiddleware(logger))
 
-	// Register tools
-	registerTools(server)
+	toolGroups, err := gtm.ParseToolGroups(cfg.ToolGroups)
+	if err != nil {
+		logger.Error("invalid tool group configuration", "error", err)
+		os.Exit(1)
+	}
+	registerTools(server, toolGroups)
+	logger.Info("registered GTM tool groups", "groups", toolGroups.Names())
 
+	// TODO(stdio): branch here on the configured transport. In stdio mode,
+	// inject a token source at auth.SATokenSourceKey via receiving middleware
+	// and call server.Run(ctx, &mcp.StdioTransport{}) instead of serving HTTP.
+	// getClient() already resolves credentials from the context, so no tool
+	// changes are needed.
 	// Create HTTP handler for MCP
 	mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		return server
@@ -259,9 +272,9 @@ func main() {
 }
 
 // registerTools adds MCP tools to the server.
-func registerTools(server *mcp.Server) {
+func registerTools(server *mcp.Server, groups gtm.ToolGroups) {
 	registerUtilityTools(server)
-	gtm.RegisterTools(server)
+	gtm.RegisterToolsForGroups(server, groups)
 }
 
 // maxBytesHandler wraps an http.Handler with a request body size limit.
