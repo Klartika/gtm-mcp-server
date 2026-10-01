@@ -20,7 +20,7 @@ services:
       - mcp_tokens:/data
 
     networks:
-      - docker_bridge
+      - npm_mcp_gtm
 
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1"]
@@ -39,5 +39,7 @@ volumes:
   mcp_tokens:
 
 networks:
-  docker_bridge:
+  # Shared with NPM ONLY (Klartika fleet-ops PLAN 11.124; created by fleet-ops networks.sh).
+  # Was the flat docker_bridge until 2026-10-01. Not internal: this container's only route out.
+  npm_mcp_gtm:
     external: true
