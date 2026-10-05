@@ -4,6 +4,10 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: mcp-google-tag-manager
+    # Memory ceiling (fleet-ops PLAN 11.128): 1.5x the measured all-inclusive peak, swap off
+    # (memswap_limit = mem_limit), so one runaway cannot take orion.
+    mem_limit: 128m
+    memswap_limit: 128m
     restart: unless-stopped
 
     environment:
